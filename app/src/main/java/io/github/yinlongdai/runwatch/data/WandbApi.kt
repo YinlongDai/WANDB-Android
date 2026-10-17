@@ -115,17 +115,22 @@ class WandbApi(baseUrl: String, apiKey: String) {
     suspend fun runState(entity: String, project: String, run: String): Run =
         Parsers.parseRun(runNode(entity, project, run, RUN_FIELDS))
 
-    /** Sampled history for several keys in one request (one spec per key). */
+    /**
+     * Sampled history for several keys in one request (one spec per key).
+     * [xKey] is "_step" or "_runtime"; runtime comes back in seconds and is
+     * returned in minutes.
+     */
     suspend fun sampledHistory(
         entity: String,
         project: String,
         run: String,
         keys: List<String>,
         samples: Int = 500,
+        xKey: String = "_step",
     ): List<Series> {
         if (keys.isEmpty()) return emptyList()
         val specs = JSONArray()
-        keys.forEach { specs.put(JSONObject().put("keys", JSONArray().put("_step").put(it)).put("samples", samples).toString()) }
+        keys.forEach { specs.put(JSONObject().put("keys", JSONArray().put(xKey).put(it)).put("samples", samples).toString()) }
         val data = gql(
             """
             query History(${'$'}entity: String!, ${'$'}project: String!, ${'$'}run: String!, ${'$'}specs: [JSONString!]!) {
@@ -138,7 +143,10 @@ class WandbApi(baseUrl: String, apiKey: String) {
         )
         val lists = data.optJSONObject("project")?.optJSONObject("run")?.optJSONArray("sampledHistory")
             ?: return emptyList()
-        return keys.mapIndexed { i, key -> Parsers.seriesFromRows(lists.optJSONArray(i) ?: JSONArray(), key) }
+        return keys.mapIndexed { i, key ->
+            val s = Parsers.seriesFromRows(lists.optJSONArray(i) ?: JSONArray(), key, xKey)
+            if (xKey == "_runtime") Series(s.label, DoubleArray(s.x.size) { s.x[it] / 60.0 }, s.y) else s
+        }
     }
 
     suspend fun systemMetrics(entity: String, project: String, run: String, samples: Int = 500): List<ChartData> {

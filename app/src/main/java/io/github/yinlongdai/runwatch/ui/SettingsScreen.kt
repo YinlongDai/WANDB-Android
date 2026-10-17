@@ -22,7 +22,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +45,8 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
     var alerts by remember { mutableStateOf(prefs.alertsEnabled) }
     var notifyFinish by remember { mutableStateOf(prefs.notifyOnFinish) }
     var searchAtBottom by remember { mutableStateOf(prefs.searchAtBottom) }
+    var glassOn by remember { mutableStateOf(prefs.glassEnabled) }
+    val glass = rememberGlass(prefs)
     fun hasPermission() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     var permitted by remember { mutableStateOf(hasPermission()) }
@@ -55,7 +56,8 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
+                state = glass,
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
@@ -63,7 +65,13 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .glassSource(glass)
+                .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding()),
+        ) {
             ListItem(
                 headlineContent = { Text("Failure alerts") },
                 supportingContent = {
@@ -114,6 +122,21 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
                     Switch(checked = searchAtBottom, onCheckedChange = {
                         searchAtBottom = it
                         prefs.searchAtBottom = it
+                    })
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Glass effects") },
+                supportingContent = {
+                    Text(
+                        if (Build.VERSION.SDK_INT >= 31) "Frosted, translucent bars. Turn off on slower phones; applies to screens you open next."
+                        else "Needs Android 12 or newer; bars are drawn translucent instead."
+                    )
+                },
+                trailingContent = {
+                    Switch(checked = glassOn, enabled = Build.VERSION.SDK_INT >= 31, onCheckedChange = {
+                        glassOn = it
+                        prefs.glassEnabled = it
                     })
                 },
             )

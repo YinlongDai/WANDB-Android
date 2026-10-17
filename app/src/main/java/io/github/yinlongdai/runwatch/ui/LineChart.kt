@@ -2,6 +2,11 @@ package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,12 +33,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.yinlongdai.runwatch.data.ChartData
@@ -44,6 +52,7 @@ import kotlin.math.pow
 
 private class PreparedSeries(
     val label: String,
+    val color: Int,
     val x: DoubleArray,
     val raw: DoubleArray,
     val smooth: DoubleArray?,
@@ -55,11 +64,23 @@ private class Prepared(
     val xMax: Double,
     val yMin: Double,
     val yMax: Double,
+    /** Data range before any zoom window, for the full-screen zoom gestures. */
+    val fullX: ClosedFloatingPointRange<Double>,
+    /** True when outlier clipping actually cut points off. */
+    val clipped: Boolean,
 )
 
 private const val MAX_POINTS = 400
 
-private fun prepare(chart: ChartData, smoothing: Float, logY: Boolean): Prepared? {
+private fun prepare(
+    chart: ChartData,
+    smoothing: Float,
+    logY: Boolean,
+    clipOutliers: Boolean,
+    xWindow: ClosedFloatingPointRange<Double>?,
+): Prepared? {
+    var fullMin = Double.POSITIVE_INFINITY
+    var fullMax = Double.NEGATIVE_INFINITY
     val out = chart.series.mapNotNull { s ->
         var x = s.x
         var y = s.y
@@ -69,20 +90,39 @@ private fun prepare(chart: ChartData, smoothing: Float, logY: Boolean): Prepared
             y = DoubleArray(keep.size) { log10(s.y[keep[it]]) }
         }
         if (x.isEmpty()) return@mapNotNull null
-        val smooth = if (smoothing > 0f) ChartMath.smooth(y, smoothing.toDouble()) else null
+        fullMin = minOf(fullMin, x.first())
+        fullMax = maxOf(fullMax, x.last())
+        // Smooth the whole series first so zooming doesn't change the EMA.
+        var smooth = if (smoothing > 0f) ChartMath.smooth(y, smoothing.toDouble()) else null
+        if (xWindow != null) {
+            // Keep one point beyond each edge so lines run to the plot border.
+            val from = (x.indexOfFirst { it >= xWindow.start } - 1).coerceAtLeast(0)
+            val to = (x.indexOfLast { it <= xWindow.endInclusive } + 1).coerceAtMost(x.size - 1)
+            if (from > to || x.indexOfFirst { it >= xWindow.start } < 0) return@mapNotNull null
+            x = x.copyOfRange(from, to + 1)
+            y = y.copyOfRange(from, to + 1)
+            smooth = smooth?.copyOfRange(from, to + 1)
+        }
         val idx = ChartMath.downsampleIndices(x.size, y, MAX_POINTS)
         PreparedSeries(
             label = s.label,
+            color = s.colorIndex,
             x = DoubleArray(idx.size) { x[idx[it]] },
             raw = DoubleArray(idx.size) { y[idx[it]] },
             smooth = smooth?.let { sm -> DoubleArray(idx.size) { sm[idx[it]] } },
         )
     }
     if (out.isEmpty()) return null
-    var xMin = out.minOf { it.x.first() }
-    var xMax = out.maxOf { it.x.last() }
-    var yMin = out.minOf { it.raw.min() }
-    var yMax = out.maxOf { it.raw.max() }
+    var xMin = xWindow?.start ?: out.minOf { it.x.first() }
+    var xMax = xWindow?.endInclusive ?: out.maxOf { it.x.last() }
+    val dataMin = out.minOf { it.raw.min() }
+    val dataMax = out.maxOf { it.raw.max() }
+    var yMin = dataMin
+    var yMax = dataMax
+    if (clipOutliers) {
+        ChartMath.robustRange(out.map { it.smooth ?: it.raw })?.let { (lo, hi) -> if (hi > lo) { yMin = lo; yMax = hi } }
+    }
+    val clipped = yMin > dataMin || yMax < dataMax
     if (xMin == xMax) { xMin -= 1; xMax += 1 }
     if (yMin == yMax) {
         val pad = if (yMin == 0.0) 1.0 else abs(yMin) * 0.1
@@ -91,8 +131,21 @@ private fun prepare(chart: ChartData, smoothing: Float, logY: Boolean): Prepared
         val pad = (yMax - yMin) * 0.05
         yMin -= pad; yMax += pad
     }
-    return Prepared(out, xMin, xMax, yMin, yMax)
+    if (fullMin == fullMax) { fullMin -= 1; fullMax += 1 }
+    return Prepared(out, xMin, xMax, yMin, yMax, fullMin..fullMax, clipped)
 }
+
+/**
+ * A pinch or pan on a zoomable chart. Fractions are of the plot width, so
+ * the caller can compute the new window with [ChartMath.zoomWindow].
+ */
+class ChartTransform(
+    val full: ClosedFloatingPointRange<Double>,
+    val current: ClosedFloatingPointRange<Double>,
+    val anchor: Double,
+    val zoom: Double,
+    val pan: Double,
+)
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -101,8 +154,19 @@ fun LineChart(
     smoothing: Float,
     logY: Boolean,
     modifier: Modifier = Modifier,
+    clipOutliers: Boolean = false,
+    height: Dp = 180.dp,
+    showStats: Boolean = true,
+    /** Visible X range; null shows everything. */
+    xWindow: ClosedFloatingPointRange<Double>? = null,
+    /** When set, two fingers zoom and pan (one finger still reads values). */
+    onTransform: ((ChartTransform) -> Unit)? = null,
+    /** Small buttons on the right of the title row (pin, expand, ...). */
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
-    val prepared = remember(chart, smoothing, logY) { prepare(chart, smoothing, logY) }
+    val prepared = remember(chart, smoothing, logY, clipOutliers, xWindow) {
+        prepare(chart, smoothing, logY, clipOutliers, xWindow)
+    }
     var cursorX by remember(chart) { mutableStateOf<Double?>(null) }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -132,6 +196,11 @@ fun LineChart(
     }
     val readoutX = cursorX?.let { cx -> prepared?.series?.firstOrNull()?.let { it.x[nearestIndex(it.x, cx)] } }
 
+    // last / min / max of the (single) series as logged, before smoothing.
+    val stats = remember(chart) {
+        chart.series.singleOrNull()?.let { ChartMath.stats(it.y) }
+    }
+
     Column(modifier) {
         // Title row; the touched value shows on the right so the card doesn't change height.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -154,9 +223,24 @@ fun LineChart(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
+            actions()
+        }
+        if (showStats && stats != null) {
+            Text(
+                buildString {
+                    append("last ").append(Parsers.formatNumber(stats.last))
+                    append("   min ").append(Parsers.formatNumber(stats.min))
+                    append("   max ").append(Parsers.formatNumber(stats.max))
+                    if (prepared?.clipped == true) append("   · outliers hidden")
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = labelColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (prepared == null) {
-            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(height - 20.dp), contentAlignment = Alignment.Center) {
                 Text(
                     if (logY) "No positive values to plot on a log scale" else "No data yet",
                     style = MaterialTheme.typography.bodySmall,
@@ -166,11 +250,37 @@ fun LineChart(
             return@Column
         }
 
-        Canvas(
+        val gestures = if (onTransform != null) {
+            Modifier.pointerInput(prepared, leftPx) {
+                // One finger reads values; two fingers zoom/pan the X axis.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        val plotWidth = (size.width - leftPx).coerceAtLeast(1f)
+                        if (pressed.size >= 2) {
+                            val centroid = event.calculateCentroid(useCurrent = true)
+                            onTransform(
+                                ChartTransform(
+                                    full = prepared.fullX,
+                                    current = prepared.xMin..prepared.xMax,
+                                    anchor = ((centroid.x - leftPx) / plotWidth).toDouble().coerceIn(0.0, 1.0),
+                                    zoom = event.calculateZoom().toDouble(),
+                                    pan = (event.calculatePan().x / plotWidth).toDouble(),
+                                )
+                            )
+                            cursorX = null
+                            event.changes.forEach { it.consume() }
+                        } else if (pressed.size == 1) {
+                            cursorX = toDataX(pressed[0].position.x, size.width.toFloat(), leftPx, prepared)
+                            pressed[0].consume()
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+        } else {
             Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .padding(top = 6.dp)
                 .pointerInput(prepared, leftPx) {
                     // Tap toggles the cursor: tap again near it to clear.
                     detectTapGestures(onTap = { pos ->
@@ -185,7 +295,15 @@ fun LineChart(
                     detectHorizontalDragGestures { change, _ ->
                         cursorX = toDataX(change.position.x, size.width.toFloat(), leftPx, prepared)
                     }
-                },
+                }
+        }
+
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(height)
+                .padding(top = 6.dp)
+                .then(gestures),
         ) {
             if (size.width <= leftPx || size.height <= bottomPad.toPx()) return@Canvas
             val left = leftPx
@@ -214,19 +332,22 @@ fun LineChart(
             }
             drawLine(axisColor, Offset(left, bottom), Offset(size.width, bottom), strokeWidth = 1.5f)
 
-            prepared.series.forEachIndexed { i, s ->
-                val color = ChartPalette[i % ChartPalette.size]
-                fun pathOf(ys: DoubleArray) = Path().apply {
-                    moveTo(px(s.x[0]), py(ys[0]))
-                    for (k in 1 until s.x.size) lineTo(px(s.x[k]), py(ys[k]))
+            // Lines are clipped to the plot so zoomed or outlier-clipped data stays inside it.
+            clipRect(left = left, top = 0f, right = size.width, bottom = bottom) {
+                prepared.series.forEachIndexed { i, s ->
+                    val color = seriesColor(s, i)
+                    fun pathOf(ys: DoubleArray) = Path().apply {
+                        moveTo(px(s.x[0]), py(ys[0]))
+                        for (k in 1 until s.x.size) lineTo(px(s.x[k]), py(ys[k]))
+                    }
+                    if (s.smooth != null) {
+                        drawPath(pathOf(s.raw), color.copy(alpha = 0.25f), style = Stroke(width = 1.5f))
+                        drawPath(pathOf(s.smooth), color, style = Stroke(width = 2.5f))
+                    } else {
+                        drawPath(pathOf(s.raw), color, style = Stroke(width = 2.5f))
+                    }
+                    if (s.x.size == 1) drawCircle(color, 4f, Offset(px(s.x[0]), py(s.raw[0])))
                 }
-                if (s.smooth != null) {
-                    drawPath(pathOf(s.raw), color.copy(alpha = 0.25f), style = Stroke(width = 1.5f))
-                    drawPath(pathOf(s.smooth), color, style = Stroke(width = 2.5f))
-                } else {
-                    drawPath(pathOf(s.raw), color, style = Stroke(width = 2.5f))
-                }
-                if (s.x.size == 1) drawCircle(color, 4f, Offset(px(s.x[0]), py(s.raw[0])))
             }
 
             cursorX?.let { cx ->
@@ -235,7 +356,8 @@ fun LineChart(
                 prepared.series.forEachIndexed { i, s ->
                     val j = nearestIndex(s.x, cx)
                     val v = (s.smooth ?: s.raw)[j]
-                    drawCircle(ChartPalette[i % ChartPalette.size], 5f, Offset(px(s.x[j]), py(v)))
+                    val y = py(v)
+                    if (y in top..bottom) drawCircle(seriesColor(s, i), 5f, Offset(px(s.x[j]), y))
                 }
             }
         }
@@ -248,7 +370,7 @@ fun LineChart(
             ) {
                 prepared.series.forEachIndexed { i, s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).background(ChartPalette[i % ChartPalette.size], CircleShape))
+                        Box(Modifier.size(8.dp).background(seriesColor(s, i), CircleShape))
                         Text(
                             " " + s.label + (readout?.getOrNull(i)?.let { ": $it" } ?: ""),
                             style = MaterialTheme.typography.labelSmall,
@@ -278,3 +400,6 @@ private fun nearestIndex(xs: DoubleArray, x: Double): Int {
     }
     return if (lo > 0 && abs(xs[lo - 1] - x) < abs(xs[lo] - x)) lo - 1 else lo
 }
+
+private fun seriesColor(s: PreparedSeries, position: Int) =
+    ChartPalette[(if (s.color >= 0) s.color else position) % ChartPalette.size]

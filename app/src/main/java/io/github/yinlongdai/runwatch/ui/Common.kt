@@ -127,3 +127,33 @@ fun runDuration(run: io.github.yinlongdai.runwatch.data.Run, now: Instant = Inst
     val end = if (run.isRunning) now else parseWandbTime(run.heartbeatAt) ?: return ""
     return formatDuration(Duration.between(start, end).seconds)
 }
+
+/**
+ * Pull-to-refresh whose spinner appears below [topInset], so it isn't hidden
+ * behind a glass top bar when the list draws underneath the bar.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun InsetPullToRefreshBox(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    topInset: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    val state = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+        state = state,
+        indicator = {
+            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                state = state,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
+            )
+        },
+        content = content,
+    )
+}

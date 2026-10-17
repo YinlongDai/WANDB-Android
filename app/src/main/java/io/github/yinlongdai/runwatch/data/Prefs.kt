@@ -43,6 +43,21 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_SEARCH_BOTTOM, true)
         set(v) = sp.edit().putBoolean(KEY_SEARCH_BOTTOM, v).apply()
 
+    /** Frosted-glass bars. Off draws plain translucent bars, for slower phones. */
+    var glassEnabled: Boolean
+        get() = sp.getBoolean(KEY_GLASS, true)
+        set(v) = sp.edit().putBoolean(KEY_GLASS, v).apply()
+
+    /** Metric charts pinned to the top of the Charts tab, as "entity/project/metric". */
+    var pinnedMetrics: Set<String>
+        get() = sp.getStringSet(KEY_PINNED, emptySet())!!.toSet()
+        set(v) = sp.edit().putStringSet(KEY_PINNED, v).apply()
+
+    /** X axis for metric charts: "_step" or "_runtime" (wall-clock minutes). */
+    var chartXKey: String
+        get() = sp.getString(KEY_X, null) ?: "_step"
+        set(v) = sp.edit().putString(KEY_X, v).apply()
+
     /** Last seen state per run ("entity/project/run" -> state), used by the alert worker. */
     var knownStates: Map<String, String>
         get() {
@@ -74,5 +89,8 @@ class Prefs(context: Context) {
         const val KEY_NOTIFY_FINISH = "notify_finish"
         const val KEY_STATES = "known_states"
         const val KEY_SEARCH_BOTTOM = "search_at_bottom"
+        const val KEY_GLASS = "glass_enabled"
+        const val KEY_PINNED = "pinned_metrics"
+        const val KEY_X = "chart_x_key"
     }
 }

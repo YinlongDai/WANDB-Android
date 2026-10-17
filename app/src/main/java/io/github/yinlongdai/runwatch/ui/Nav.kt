@@ -57,16 +57,40 @@ fun RunWatchNav(pendingRunPath: String?, onPendingConsumed: () -> Unit) {
                 entity = entity,
                 project = project,
                 onOpenRun = { run -> nav.goToRun(entity, project, run.name) },
+                onCompare = { names -> nav.navigate("compare/${enc(entity)}/${enc(project)}/${enc(names.joinToString(","))}") },
                 onBack = { nav.popBackStack() },
             )
         }
-        composable("run/{entity}/{project}/{run}") { entry ->
-            RunDetailScreen(
+        composable("compare/{entity}/{project}/{runs}") { entry ->
+            CompareScreen(
+                prefs = prefs,
+                entity = entry.arguments?.getString("entity").orEmpty(),
+                project = entry.arguments?.getString("project").orEmpty(),
+                runNames = entry.arguments?.getString("runs").orEmpty().split(',').filter { it.isNotEmpty() },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable("chart/{entity}/{project}/{run}/{metric}") { entry ->
+            ChartScreen(
                 prefs = prefs,
                 entity = entry.arguments?.getString("entity").orEmpty(),
                 project = entry.arguments?.getString("project").orEmpty(),
                 runName = entry.arguments?.getString("run").orEmpty(),
+                metric = entry.arguments?.getString("metric").orEmpty(),
                 onBack = { nav.popBackStack() },
+            )
+        }
+        composable("run/{entity}/{project}/{run}") { entry ->
+            val entity = entry.arguments?.getString("entity").orEmpty()
+            val project = entry.arguments?.getString("project").orEmpty()
+            val run = entry.arguments?.getString("run").orEmpty()
+            RunDetailScreen(
+                prefs = prefs,
+                entity = entity,
+                project = project,
+                runName = run,
+                onBack = { nav.popBackStack() },
+                onExpandMetric = { key -> nav.navigate("chart/${enc(entity)}/${enc(project)}/${enc(run)}/${enc(key)}") },
             )
         }
         composable("settings") {

@@ -4,8 +4,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Terminal
@@ -38,7 +44,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +74,7 @@ import io.github.yinlongdai.runwatch.data.Prefs
 import io.github.yinlongdai.runwatch.data.RunDetail
 import io.github.yinlongdai.runwatch.data.Series
 import io.github.yinlongdai.runwatch.data.WandbApi
+import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
@@ -90,6 +96,7 @@ fun RunDetailScreen(
     project: String,
     runName: String,
     onBack: () -> Unit,
+    onExpandMetric: (key: String) -> Unit = {},
 ) {
     val api = remember { prefs.api() } ?: run { CenteredMessage("Signed out."); return }
     val scope = rememberCoroutineScope()
@@ -111,12 +118,14 @@ fun RunDetailScreen(
     }
 
     val run = detail?.run
+    val glass = rememberGlass(prefs)
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         // Tabs live at the bottom, within thumb reach; labels never wrap.
-        bottomBar = { RunTabsBar(tab) { tab = it } },
+        bottomBar = { RunTabsBar(tab, glass) { tab = it } },
         topBar = {
-            TopAppBar(
+            GlassTopBar(
+                state = glass,
                 title = {
                     Column {
                         Text(run?.displayName ?: runName, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -143,16 +152,17 @@ fun RunDetailScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
+        // Each tab draws under the glass bars and is the glass source itself.
+        Box(Modifier.fillMaxSize()) {
             val d = detail
             when {
                 d == null && error != null -> CenteredMessage(error!!)
                 d == null -> CenteredLoading()
                 else -> when (tab) {
-                    0 -> ChartsTab(api, entity, project, d, prefs.searchAtBottom)
-                    1 -> SystemTab(api, entity, project, runName, d.run.isRunning)
-                    2 -> LogsTab(api, entity, project, runName, d.run.isRunning)
-                    else -> OverviewTab(d)
+                    0 -> ChartsTab(api, entity, project, d, prefs, glass, padding, onExpandMetric)
+                    1 -> SystemTab(api, entity, project, runName, d.run.isRunning, glass, padding)
+                    2 -> LogsTab(api, entity, project, runName, d.run.isRunning, glass, padding)
+                    else -> OverviewTab(d, glass, padding)
                 }
             }
         }
@@ -182,8 +192,8 @@ fun RunDetailScreen(
 }
 
 @Composable
-fun RunTabsBar(selected: Int, onSelect: (Int) -> Unit) {
-    NavigationBar {
+fun RunTabsBar(selected: Int, glass: HazeState?, onSelect: (Int) -> Unit) {
+    val items: @Composable RowScope.() -> Unit = {
         TABS.forEachIndexed { i, t ->
             NavigationBarItem(
                 selected = selected == i,
@@ -193,52 +203,84 @@ fun RunTabsBar(selected: Int, onSelect: (Int) -> Unit) {
             )
         }
     }
+    if (glass != null) GlassNavigationBar(glass, items) else NavigationBar(content = items)
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ChartControls(
+fun ChartControls(
     smoothing: Float,
     onSmoothing: (Float) -> Unit,
     logY: Boolean,
     onLogY: (Boolean) -> Unit,
+    clipOutliers: Boolean,
+    onClipOutliers: (Boolean) -> Unit,
+    xKey: String? = null,
+    onXKey: (String) -> Unit = {},
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Smoothing", style = MaterialTheme.typography.labelMedium)
-        Slider(
-            value = smoothing,
-            onValueChange = onSmoothing,
-            valueRange = 0f..0.99f,
-            modifier = Modifier.weight(1f),
-        )
-        Text("%.2f".format(smoothing), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
-        FilterChip(selected = logY, onClick = { onLogY(!logY) }, label = { Text("Log Y") })
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Smoothing", style = MaterialTheme.typography.labelMedium)
+            Slider(
+                value = smoothing,
+                onValueChange = onSmoothing,
+                valueRange = 0f..0.99f,
+                modifier = Modifier.weight(1f),
+            )
+            Text("%.2f".format(smoothing), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = logY, onClick = { onLogY(!logY) }, label = { Text("Log Y") })
+            FilterChip(selected = clipOutliers, onClick = { onClipOutliers(!clipOutliers) }, label = { Text("Ignore outliers") })
+            if (xKey != null) {
+                FilterChip(
+                    selected = xKey == "_runtime",
+                    onClick = { onXKey(if (xKey == "_runtime") "_step" else "_runtime") },
+                    label = { Text(if (xKey == "_runtime") "X: time" else "X: step") },
+                )
+            }
+        }
     }
 }
 
 private const val CHART_PAGE = 20
 
 @Composable
-private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: RunDetail, searchAtBottom: Boolean) {
+private fun ChartsTab(
+    api: WandbApi,
+    entity: String,
+    project: String,
+    detail: RunDetail,
+    prefs: Prefs,
+    glass: HazeState,
+    barPadding: PaddingValues,
+    onExpand: (String) -> Unit,
+) {
     val runName = detail.run.name
     var query by rememberSaveable { mutableStateOf("") }
-    var smoothing by rememberSaveable { mutableFloatStateOf(0f) }
-    var logY by rememberSaveable { mutableStateOf(false) }
     var limit by rememberSaveable { mutableIntStateOf(CHART_PAGE) }
-    var series by remember { mutableStateOf<Map<String, Series>>(emptyMap()) }
-    var loading by remember { mutableStateOf(true) }
+    val xKey = ChartSettings.xKey(prefs)
+    var series by remember(xKey) { mutableStateOf<Map<String, Series>>(emptyMap()) }
+    var loading by remember(xKey) { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    val pinPrefix = "$entity/$project/"
+    var pinned by remember { mutableStateOf(prefs.pinnedMetrics) }
+    fun togglePin(key: String) {
+        val id = pinPrefix + key
+        prefs.pinnedMetrics = if (id in pinned) pinned - id else pinned + id
+        pinned = prefs.pinnedMetrics
+    }
 
     val keys = detail.metricKeys.filter { query.isBlank() || it.contains(query, ignoreCase = true) }
-    val visible = keys.take(limit)
+    // Pinned metrics come first, in their own section.
+    val (pinnedKeys, otherKeys) = keys.partition { pinPrefix + it in pinned }
+    val ordered = pinnedKeys + otherKeys
+    val visible = ordered.take(limit)
 
-    PollingEffect(visible, intervalMs = 15_000) {
+    PollingEffect(visible, xKey, intervalMs = 15_000) {
         if (visible.isEmpty()) { loading = false; return@PollingEffect false }
         try {
-            val fetched = api.sampledHistory(entity, project, runName, visible)
+            val fetched = api.sampledHistory(entity, project, runName, visible, xKey = xKey)
             series = series + visible.zip(fetched).toMap()
             error = null
         } catch (e: ApiException) {
@@ -254,17 +296,29 @@ private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: Ru
     }
 
     SearchLayout(
-        atBottom = searchAtBottom,
+        atBottom = prefs.searchAtBottom,
+        barPadding = barPadding,
+        glass = glass,
         search = { m, floating ->
-            PillSearchField(query, { query = it; limit = CHART_PAGE }, "Filter ${detail.metricKeys.size} metrics", m, floating)
+            PillSearchField(query, { query = it; limit = CHART_PAGE }, "Filter ${detail.metricKeys.size} metrics", m, floating, glass)
         },
     ) { listPadding ->
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 4.dp, bottom = listPadding.calculateBottomPadding() + 8.dp),
+            contentPadding = PaddingValues(
+                top = listPadding.calculateTopPadding() + 4.dp,
+                bottom = listPadding.calculateBottomPadding() + 8.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item { ChartControls(smoothing, { smoothing = it }, logY, { logY = it }) }
+            item {
+                ChartControls(
+                    ChartSettings.smoothing, { ChartSettings.smoothing = it },
+                    ChartSettings.logY, { ChartSettings.logY = it },
+                    ChartSettings.clipOutliers, { ChartSettings.clipOutliers = it },
+                    xKey, { ChartSettings.setXKey(prefs, it) },
+                )
+            }
             error?.let { msg ->
                 item { Text("Couldn't load history: $msg", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
             }
@@ -278,24 +332,36 @@ private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: Ru
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            // Section header whenever the metric prefix changes ("train/loss" -> "train").
+            // Section header whenever the section changes: "Pinned", then the metric prefix ("train/loss" -> "train").
+            fun sectionOf(k: String) = if (k in pinnedKeys) "Pinned" else k.substringBeforeLast('/', "").ifEmpty { "Charts" }
             visible.forEachIndexed { i, key ->
-                val section = key.substringBeforeLast('/', "")
-                if (i == 0 || visible[i - 1].substringBeforeLast('/', "") != section) {
+                val section = sectionOf(key)
+                if (i == 0 || sectionOf(visible[i - 1]) != section) {
                     item(key = "section:$i:$section") {
                         Text(
-                            section.ifEmpty { "Charts" },
+                            section,
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 16.dp, top = 8.dp),
                         )
                     }
                 }
-                item(key = key) { MetricCard(key, series[key], smoothing, logY) }
+                item(key = key) {
+                    MetricCard(
+                        key = key,
+                        series = series[key],
+                        xLabel = ChartSettings.xLabel(xKey),
+                        // In "Pinned" the prefix isn't shown by a header, so keep the full name.
+                        title = if (key in pinnedKeys) key else key.substringAfterLast('/'),
+                        pinned = key in pinnedKeys,
+                        onTogglePin = { togglePin(key) },
+                        onExpand = { onExpand(key) },
+                    )
+                }
             }
-            if (keys.size > limit) item {
+            if (ordered.size > limit) item {
                 TextButton(onClick = { limit += CHART_PAGE }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Show ${minOf(CHART_PAGE, keys.size - limit)} more of ${keys.size - limit}")
+                    Text("Show ${minOf(CHART_PAGE, ordered.size - limit)} more of ${ordered.size - limit}")
                 }
             }
         }
@@ -303,7 +369,15 @@ private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: Ru
 }
 
 @Composable
-private fun SystemTab(api: WandbApi, entity: String, project: String, runName: String, running: Boolean) {
+private fun SystemTab(
+    api: WandbApi,
+    entity: String,
+    project: String,
+    runName: String,
+    running: Boolean,
+    glass: HazeState,
+    barPadding: PaddingValues,
+) {
     var charts by remember { mutableStateOf<List<ChartData>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -322,23 +396,33 @@ private fun SystemTab(api: WandbApi, entity: String, project: String, runName: S
         list == null && error != null -> CenteredMessage(error!!)
         list == null -> CenteredLoading()
         list.isEmpty() -> CenteredMessage("No system metrics recorded for this run.")
-        else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Spacer8() }
+        else -> LazyColumn(
+            Modifier.fillMaxSize().glassSource(glass),
+            contentPadding = PaddingValues(
+                top = barPadding.calculateTopPadding() + 4.dp,
+                bottom = barPadding.calculateBottomPadding() + 8.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             items(list, key = { it.title }) { chart ->
                 Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                    LineChart(chart, smoothing = 0f, logY = false, modifier = ChartPadding)
+                    LineChart(chart, smoothing = 0f, logY = false, modifier = ChartPadding, showStats = chart.series.size == 1)
                 }
             }
-            item { Spacer8() }
         }
     }
 }
 
 @Composable
-private fun Spacer8() = androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 4.dp))
-
-@Composable
-private fun LogsTab(api: WandbApi, entity: String, project: String, runName: String, running: Boolean) {
+private fun LogsTab(
+    api: WandbApi,
+    entity: String,
+    project: String,
+    runName: String,
+    running: Boolean,
+    glass: HazeState,
+    barPadding: PaddingValues,
+) {
     var lines by remember { mutableStateOf<List<LogLine>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
@@ -359,7 +443,7 @@ private fun LogsTab(api: WandbApi, entity: String, project: String, runName: Str
         if (follow && !list.isNullOrEmpty()) listState.scrollToItem(list.size - 1)
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().glassSource(glass).padding(top = barPadding.calculateTopPadding())) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -385,6 +469,7 @@ private fun LogsTab(api: WandbApi, entity: String, project: String, runName: Str
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
+                    contentPadding = PaddingValues(bottom = barPadding.calculateBottomPadding()),
                 ) {
                     items(list, key = { it.number }) { line ->
                         Text(
@@ -416,13 +501,21 @@ private fun ansiText(line: LogLine): AnnotatedString {
 }
 
 @Composable
-private fun OverviewTab(detail: RunDetail) {
+private fun OverviewTab(detail: RunDetail, glass: HazeState, barPadding: PaddingValues) {
     val run = detail.run
     val created = parseWandbTime(run.createdAt)
     val end = if (run.isRunning) Instant.now() else parseWandbTime(run.heartbeatAt)
     val runtime = if (created != null && end != null) formatDuration(Duration.between(created, end).seconds) else ""
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    LazyColumn(
+        Modifier.fillMaxSize().glassSource(glass),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = barPadding.calculateTopPadding(),
+            bottom = barPadding.calculateBottomPadding() + 8.dp,
+        ),
+    ) {
         item { SectionTitle("Run") }
         item { KeyValue("ID", run.name) }
         item { KeyValue("State", run.state) }
@@ -441,7 +534,6 @@ private fun OverviewTab(detail: RunDetail) {
             item { SectionTitle("Config") }
             items(detail.config, key = { "c:" + it.first }) { (k, v) -> KeyValue(k, v) }
         }
-        item { Spacer8() }
     }
 }
 
@@ -471,22 +563,55 @@ private fun KeyValue(key: String, value: String) {
 }
 
 /** Tight left padding: the Y-axis labels already sit inside the chart's own gutter. */
-private val ChartPadding = Modifier.padding(start = 8.dp, end = 12.dp, top = 10.dp, bottom = 8.dp)
+val ChartPadding = Modifier.padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 8.dp)
 
 @Composable
-private fun MetricCard(key: String, series: Series?, smoothing: Float, logY: Boolean) {
-    // The section header already shows the prefix, so the card shows the short name.
-    val title = key.substringAfterLast('/')
+private fun MetricCard(
+    key: String,
+    series: Series?,
+    xLabel: String,
+    title: String,
+    pinned: Boolean,
+    onTogglePin: () -> Unit,
+    onExpand: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val actions: @Composable RowScope.() -> Unit = {
+            SmallIconButton(
+                if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                if (pinned) "Unpin $key" else "Pin $key",
+                tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onTogglePin,
+            )
+            SmallIconButton(Icons.Filled.OpenInFull, "Expand $key", onClick = onExpand)
+        }
         if (series == null) {
-            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(12.dp))
+            Row(ChartPadding, verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                actions()
+            }
         } else {
             LineChart(
-                chart = ChartData(title = title, series = listOf(series), xLabel = "step"),
-                smoothing = smoothing,
-                logY = logY,
+                chart = ChartData(title = title, series = listOf(series), xLabel = xLabel),
+                smoothing = ChartSettings.smoothing,
+                logY = ChartSettings.logY,
+                clipOutliers = ChartSettings.clipOutliers,
                 modifier = ChartPadding,
+                actions = actions,
             )
         }
+    }
+}
+
+/** Compact 32dp icon button for chart headers. */
+@Composable
+fun SmallIconButton(
+    icon: ImageVector,
+    description: String,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
+        Icon(icon, description, tint = tint, modifier = Modifier.size(18.dp))
     }
 }

@@ -1,6 +1,8 @@
 package io.github.yinlongdai.runwatch.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -26,8 +30,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +57,7 @@ fun RunsScreen(
     entity: String,
     project: String,
     onOpenRun: (Run) -> Unit,
+    onCompare: (List<String>) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -93,54 +97,82 @@ fun RunsScreen(
         runs?.any { it.isRunning } == true
     }
 
+    // Long-press runs to select them for side-by-side comparison.
+    var selected by remember { mutableStateOf<List<String>>(emptyList()) }
+    fun toggleSelect(run: Run) {
+        selected = if (run.name in selected) selected - run.name
+        else if (selected.size < MAX_COMPARE) selected + run.name else selected
+    }
+    val glass = rememberGlass(prefs)
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(project, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            "$entity · $total runs",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        prefs.toggleStar(path)
-                        isStarred = path in prefs.starred
-                        RunAlertWorker.sync(context)
-                    }) {
-                        if (isStarred) Icon(Icons.Filled.Star, "Unstar", tint = MaterialTheme.colorScheme.primary)
-                        else Icon(Icons.Outlined.StarBorder, "Star for alerts")
-                    }
-                    IconButton(onClick = { reload++ }) { Icon(Icons.Filled.Refresh, "Refresh") }
-                },
-            )
+            if (selected.isNotEmpty()) {
+                GlassTopBar(
+                    state = glass,
+                    title = { Text("${selected.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = { selected = emptyList() }) { Icon(Icons.Filled.Close, "Clear selection") }
+                    },
+                    actions = {
+                        TextButton(enabled = selected.size >= 2, onClick = { onCompare(selected) }) {
+                            Icon(Icons.AutoMirrored.Filled.CompareArrows, null, Modifier.padding(end = 6.dp))
+                            Text("Compare")
+                        }
+                    },
+                )
+            } else {
+                GlassTopBar(
+                    state = glass,
+                    title = {
+                        Column {
+                            Text(project, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "$entity · $total runs",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            prefs.toggleStar(path)
+                            isStarred = path in prefs.starred
+                            RunAlertWorker.sync(context)
+                        }) {
+                            if (isStarred) Icon(Icons.Filled.Star, "Unstar", tint = MaterialTheme.colorScheme.primary)
+                            else Icon(Icons.Outlined.StarBorder, "Star for alerts")
+                        }
+                        IconButton(onClick = { reload++ }) { Icon(Icons.Filled.Refresh, "Refresh") }
+                    },
+                )
+            }
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !onlyActive, onClick = { onlyActive = false }, label = { Text("All") })
-                FilterChip(selected = onlyActive, onClick = { onlyActive = true }, label = { Text("Running") })
-            }
-            val list = runs
+        val list = runs
+        Box(Modifier.fillMaxSize().glassSource(glass)) {
             when {
                 list == null && error != null -> CenteredMessage(error!!, "Retry") { reload++ }
                 list == null -> CenteredLoading()
                 list.isEmpty() -> CenteredMessage("No runs in this project yet.")
                 else -> {
                     val shown = if (onlyActive) list.filter { it.isRunning } else list
-                    PullToRefreshBox(
+                    InsetPullToRefreshBox(
                         isRefreshing = refreshing,
                         onRefresh = { refreshing = true; reload++ },
+                        topInset = padding.calculateTopPadding(),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        LazyColumn(Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
+                            item {
+                                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(selected = !onlyActive, onClick = { onlyActive = false }, label = { Text("All") })
+                                    FilterChip(selected = onlyActive, onClick = { onlyActive = true }, label = { Text("Running") })
+                                }
+                            }
                             if (error != null) item {
                                 Text(
                                     "Couldn't refresh: $error",
@@ -152,8 +184,21 @@ fun RunsScreen(
                             if (shown.isEmpty()) item {
                                 Text("No running runs among the loaded ones.", modifier = Modifier.padding(16.dp))
                             }
+                            if (selected.isEmpty() && shown.size >= 2) item {
+                                Text(
+                                    "Tip: long-press runs to compare them.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
                             items(shown, key = { it.name }) { run ->
-                                RunRow(run) { onOpenRun(run) }
+                                RunRow(
+                                    run = run,
+                                    selected = run.name in selected,
+                                    onClick = { if (selected.isNotEmpty()) toggleSelect(run) else onOpenRun(run) },
+                                    onLongClick = { toggleSelect(run) },
+                                )
                                 HorizontalDivider()
                             }
                             if (hasMore && !onlyActive) item {
@@ -186,12 +231,17 @@ fun RunsScreen(
     }
 }
 
+/** Most runs that fit legibly on one chart (one palette color each). */
+const val MAX_COMPARE = 8
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RunRow(run: Run, onClick: () -> Unit) {
+private fun RunRow(run: Run, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

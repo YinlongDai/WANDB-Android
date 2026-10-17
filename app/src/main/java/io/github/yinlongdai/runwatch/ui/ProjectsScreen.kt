@@ -8,7 +8,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -31,8 +30,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +66,7 @@ fun ProjectsScreen(
     var reload by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     val searchAtBottom = remember { prefs.searchAtBottom }
+    val glass = rememberGlass(prefs)
     var menuOpen by remember { mutableStateOf(false) }
 
     // Starring a project turns on alerts, so ask for notification permission the first time.
@@ -110,7 +108,8 @@ fun ProjectsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            GlassTopBar(
+                state = glass,
                 title = {
                     Box {
                         TextButton(onClick = { menuOpen = true }, enabled = (viewer?.entities?.size ?: 0) > 1) {
@@ -134,11 +133,12 @@ fun ProjectsScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
-            UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Column(Modifier.fillMaxSize()) {
             SearchLayout(
                 atBottom = searchAtBottom,
-                search = { m, floating -> PillSearchField(query, { query = it }, "Filter projects", m, floating) },
+                barPadding = padding,
+                glass = glass,
+                search = { m, floating -> PillSearchField(query, { query = it }, "Filter projects", m, floating, glass) },
             ) { listPadding ->
                 val list = projects
                 when {
@@ -148,12 +148,14 @@ fun ProjectsScreen(
                     else -> {
                         val filtered = list.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
                         val (pinned, rest) = filtered.partition { it.path in starred }
-                        PullToRefreshBox(
+                        InsetPullToRefreshBox(
                             isRefreshing = refreshing,
                             onRefresh = { refreshing = true; reload++ },
+                            topInset = listPadding.calculateTopPadding(),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding) {
+                                item { UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                                 if (pinned.isNotEmpty()) {
                                     item { SectionHeader("Starred · alerts on") }
                                     items(pinned, key = { "s/" + it.path }) { p ->

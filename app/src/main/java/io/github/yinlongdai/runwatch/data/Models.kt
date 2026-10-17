@@ -54,6 +54,8 @@ class Series(
     val label: String,
     val x: DoubleArray,
     val y: DoubleArray,
+    /** Fixed palette slot, so a run keeps its color across charts; -1 uses the series' position. */
+    val colorIndex: Int = -1,
 ) {
     val isEmpty: Boolean get() = x.isEmpty()
 }

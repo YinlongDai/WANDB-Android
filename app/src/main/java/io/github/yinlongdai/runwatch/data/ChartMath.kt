@@ -48,6 +48,52 @@ object ChartMath {
         return out.toIntArray()
     }
 
+    /**
+     * Y range that ignores outliers: the [lowQ]..[highQ] quantiles of all
+     * values, so a single loss spike doesn't flatten the rest of the curve.
+     * Null when there are no finite values.
+     */
+    fun robustRange(values: List<DoubleArray>, lowQ: Double = 0.01, highQ: Double = 0.99): Pair<Double, Double>? {
+        val all = values.flatMap { it.asIterable() }.filter { it.isFinite() }.sorted()
+        if (all.isEmpty()) return null
+        fun q(p: Double) = all[((all.size - 1) * p).toInt().coerceIn(0, all.size - 1)]
+        return q(lowQ) to q(highQ)
+    }
+
+    /** Last, min and max of a series, for the chart header. */
+    data class Stats(val last: Double, val min: Double, val max: Double)
+
+    fun stats(y: DoubleArray): Stats? =
+        if (y.isEmpty()) null else Stats(y.last(), y.min(), y.max())
+
+    /**
+     * New visible X window after a pinch/pan gesture.
+     *
+     * @param full the whole data range
+     * @param current the window shown now
+     * @param anchor gesture centroid as a fraction (0..1) of the plot width; stays put while zooming
+     * @param zoom gesture scale factor (>1 zooms in)
+     * @param pan horizontal pan as a fraction of the plot width (positive moves content right)
+     * @param minFraction the narrowest window allowed, as a fraction of [full]
+     */
+    fun zoomWindow(
+        full: ClosedFloatingPointRange<Double>,
+        current: ClosedFloatingPointRange<Double>,
+        anchor: Double,
+        zoom: Double,
+        pan: Double,
+        minFraction: Double = 0.005,
+    ): ClosedFloatingPointRange<Double> {
+        val fullSpan = full.endInclusive - full.start
+        if (fullSpan <= 0) return full
+        val span = current.endInclusive - current.start
+        val newSpan = (span / zoom).coerceIn(fullSpan * minFraction, fullSpan)
+        val pivot = current.start + anchor * span
+        var start = pivot - anchor * newSpan - pan * newSpan
+        start = start.coerceIn(full.start, full.endInclusive - newSpan)
+        return start..(start + newSpan)
+    }
+
     /** "Nice" tick values covering [min, max], roughly count of them. */
     fun niceTicks(min: Double, max: Double, count: Int = 4): List<Double> {
         if (!min.isFinite() || !max.isFinite()) return emptyList()
