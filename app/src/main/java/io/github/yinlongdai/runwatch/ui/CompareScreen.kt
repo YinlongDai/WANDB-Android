@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +61,7 @@ fun CompareScreen(
     project: String,
     runNames: List<String>,
     onBack: () -> Unit,
+    onExpandMetric: (String) -> Unit = {},
 ) {
     val api = remember { prefs.api() } ?: run { CenteredMessage("Signed out."); return }
     val glass = rememberGlass(prefs)
@@ -197,8 +200,14 @@ fun CompareScreen(
                     items(visible, key = { it }) { key ->
                         Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             val series = charts[key]
+                            val expand: @Composable RowScope.() -> Unit = {
+                                SmallIconButton(Icons.Filled.OpenInFull, "Expand $key") { onExpandMetric(key) }
+                            }
                             if (series == null) {
-                                Text(key, style = MaterialTheme.typography.titleSmall, modifier = ChartPadding)
+                                Row(ChartPadding, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(key, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                    expand()
+                                }
                             } else {
                                 LineChart(
                                     chart = ChartData(key, series, ChartSettings.xLabel(xKey)),
@@ -207,6 +216,7 @@ fun CompareScreen(
                                     clipOutliers = ChartSettings.clipOutliers,
                                     showStats = false,
                                     modifier = ChartPadding,
+                                    actions = expand,
                                 )
                             }
                         }

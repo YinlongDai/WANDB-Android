@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,18 +136,6 @@ private fun prepare(
     return Prepared(out, xMin, xMax, yMin, yMax, fullMin..fullMax, clipped)
 }
 
-/**
- * A pinch or pan on a zoomable chart. Fractions are of the plot width, so
- * the caller can compute the new window with [ChartMath.zoomWindow].
- */
-class ChartTransform(
-    val full: ClosedFloatingPointRange<Double>,
-    val current: ClosedFloatingPointRange<Double>,
-    val anchor: Double,
-    val zoom: Double,
-    val pan: Double,
-)
-
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun LineChart(
@@ -159,8 +148,8 @@ fun LineChart(
     showStats: Boolean = true,
     /** Visible X range; null shows everything. */
     xWindow: ClosedFloatingPointRange<Double>? = null,
-    /** When set, two fingers zoom and pan (one finger still reads values). */
-    onTransform: ((ChartTransform) -> Unit)? = null,
+    /** When set, two fingers zoom/pan the X axis and double-tap resets; reports the new window (null = all). */
+    onXWindowChange: ((ClosedFloatingPointRange<Double>?) -> Unit)? = null,
     /** Small buttons on the right of the title row (pin, expand, ...). */
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -186,6 +175,9 @@ fun LineChart(
     }
     val gapPx = with(density) { 4.dp.toPx() }
     val leftPx = (yAxis?.maxOfOrNull { it.second.size.width }?.toFloat() ?: 0f) + gapPx
+    // Read by the long-lived zoom gesture handler, which must not restart on redraw.
+    val latestLeft = rememberUpdatedState(leftPx)
+    val latestOnWindow = rememberUpdatedState(onXWindowChange)
 
     // Value at the touched position (nearest point per series), or null.
     val readout: List<String>? = cursorX?.let { cx ->
@@ -249,34 +241,63 @@ fun LineChart(
             }
             return@Column
         }
+        val latestPrepared = rememberUpdatedState(prepared)
 
-        val gestures = if (onTransform != null) {
-            Modifier.pointerInput(prepared, leftPx) {
-                // One finger reads values; two fingers zoom/pan the X axis.
+        val gestures = if (onXWindowChange != null) {
+            // Keyed on Unit so the handler survives redraws; a pinch changes the
+            // data every frame, and restarting here would drop the gesture.
+            Modifier.pointerInput(Unit) {
+                var lastTapUp = 0L
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val p0 = latestPrepared.value
+                    var window = p0.xMin..p0.xMax
+                    var multiTouch = false
+                    var moved = false
                     do {
                         val event = awaitPointerEvent()
                         val pressed = event.changes.filter { it.pressed }
-                        val plotWidth = (size.width - leftPx).coerceAtLeast(1f)
+                        val left = latestLeft.value
+                        val plotWidth = (size.width - left).coerceAtLeast(1f)
                         if (pressed.size >= 2) {
+                            // Two fingers zoom/pan the X axis. The window is tracked here so
+                            // each step builds on the last, not on a frame-old redraw.
+                            multiTouch = true
                             val centroid = event.calculateCentroid(useCurrent = true)
-                            onTransform(
-                                ChartTransform(
-                                    full = prepared.fullX,
-                                    current = prepared.xMin..prepared.xMax,
-                                    anchor = ((centroid.x - leftPx) / plotWidth).toDouble().coerceIn(0.0, 1.0),
-                                    zoom = event.calculateZoom().toDouble(),
-                                    pan = (event.calculatePan().x / plotWidth).toDouble(),
+                            val zoom = event.calculateZoom().toDouble()
+                            val pan = event.calculatePan().x.toDouble()
+                            if (zoom != 1.0 || pan != 0.0) {
+                                window = ChartMath.zoomWindow(
+                                    full = p0.fullX,
+                                    current = window,
+                                    anchor = ((centroid.x - left) / plotWidth).toDouble().coerceIn(0.0, 1.0),
+                                    zoom = zoom,
+                                    pan = pan / plotWidth,
                                 )
-                            )
+                                val isFull = window.start <= p0.fullX.start && window.endInclusive >= p0.fullX.endInclusive
+                                latestOnWindow.value?.invoke(if (isFull) null else window)
+                            }
                             cursorX = null
                             event.changes.forEach { it.consume() }
-                        } else if (pressed.size == 1) {
-                            cursorX = toDataX(pressed[0].position.x, size.width.toFloat(), leftPx, prepared)
-                            pressed[0].consume()
+                        } else if (pressed.size == 1 && !multiTouch) {
+                            // One finger reads values (not right after a pinch, when one finger lifts first).
+                            val c = pressed[0]
+                            if ((c.position - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                            cursorX = toDataX(c.position.x, size.width.toFloat(), left, latestPrepared.value)
+                            c.consume()
                         }
                     } while (event.changes.any { it.pressed })
+                    // Double-tap resets the zoom.
+                    val upTime = currentEvent.changes.firstOrNull()?.uptimeMillis ?: 0L
+                    if (!multiTouch && !moved && upTime - down.uptimeMillis < 250) {
+                        if (upTime - lastTapUp < 350) {
+                            latestOnWindow.value?.invoke(null)
+                            cursorX = null
+                            lastTapUp = 0L
+                        } else {
+                            lastTapUp = upTime
+                        }
+                    }
                 }
             }
         } else {

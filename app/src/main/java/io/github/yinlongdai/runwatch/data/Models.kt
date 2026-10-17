@@ -30,6 +30,8 @@ data class Run(
     val group: String?,
     val jobType: String?,
     val tags: List<String>,
+    /** Numeric top-level summary values (final or latest logged), when requested. */
+    val summary: Map<String, Double> = emptyMap(),
 ) {
     val isRunning: Boolean get() = state == "running" || state == "pending"
     val isFailure: Boolean get() = state == "crashed" || state == "failed"

@@ -70,6 +70,13 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_STATES, obj.toString()).apply()
         }
 
+    /** Summary metric shown in a project's runs list ("entity/project"), or null. */
+    fun runsColumn(path: String): String? = sp.getString("runs_column:$path", null)
+
+    fun setRunsColumn(path: String, key: String?) {
+        sp.edit().apply { if (key == null) remove("runs_column:$path") else putString("runs_column:$path", key) }.apply()
+    }
+
     fun toggleStar(path: String) {
         starred = if (path in starred) starred - path else starred + path
     }

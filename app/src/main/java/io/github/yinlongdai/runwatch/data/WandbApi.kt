@@ -71,7 +71,15 @@ class WandbApi(baseUrl: String, apiKey: String) {
         return out
     }
 
-    suspend fun runs(entity: String, project: String, cursor: String? = null, perPage: Int = 30): RunPage {
+    /** [withSummary] also fetches each run's summary (larger payload), for the metric column. */
+    suspend fun runs(
+        entity: String,
+        project: String,
+        cursor: String? = null,
+        perPage: Int = 30,
+        withSummary: Boolean = false,
+    ): RunPage {
+        val fields = if (withSummary) "$RUN_FIELDS summaryMetrics" else RUN_FIELDS
         val data = gql(
             """
             query Runs(${'$'}entity: String!, ${'$'}project: String!, ${'$'}cursor: String, ${'$'}perPage: Int) {
@@ -79,7 +87,7 @@ class WandbApi(baseUrl: String, apiKey: String) {
                 runCount
                 runs(after: ${'$'}cursor, first: ${'$'}perPage, order: "-created_at") {
                   pageInfo { endCursor hasNextPage }
-                  edges { node { $RUN_FIELDS } }
+                  edges { node { $fields } }
                 }
               }
             }

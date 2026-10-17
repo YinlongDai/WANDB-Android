@@ -24,39 +24,52 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.yinlongdai.runwatch.data.ApiException
 import io.github.yinlongdai.runwatch.data.ChartData
-import io.github.yinlongdai.runwatch.data.ChartMath
 import io.github.yinlongdai.runwatch.data.Prefs
 import io.github.yinlongdai.runwatch.data.Series
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /** Samples requested for the full-screen view: more detail to zoom into than the 500 used for cards. */
 private const val FULL_SAMPLES = 2000
 
 /**
- * One metric, full screen. Two fingers zoom and pan the X axis; one finger
- * reads values. Shares smoothing / log / outlier / X-axis settings with the
- * Charts tab.
+ * One metric, full screen, for one run or several (from Compare, one colored
+ * line per run). Two fingers zoom and pan the X axis, one finger reads values,
+ * double-tap resets. Shares smoothing / log / outlier / X-axis settings with
+ * the Charts tab.
  */
 @Composable
 fun ChartScreen(
     prefs: Prefs,
     entity: String,
     project: String,
-    runName: String,
+    runNames: List<String>,
     metric: String,
     onBack: () -> Unit,
 ) {
     val api = remember { prefs.api() } ?: run { CenteredMessage("Signed out."); return }
     val glass = rememberGlass(prefs)
     val xKey = ChartSettings.xKey(prefs)
-    var series by remember(xKey) { mutableStateOf<Series?>(null) }
+    var series by remember(xKey) { mutableStateOf<List<Series>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var running by remember { mutableStateOf(false) }
     var window by remember(xKey) { mutableStateOf<ClosedFloatingPointRange<Double>?>(null) }
 
     PollingEffect(xKey, intervalMs = 15_000) {
         try {
-            series = api.sampledHistory(entity, project, runName, listOf(metric), samples = FULL_SAMPLES, xKey = xKey).firstOrNull()
-            running = api.runState(entity, project, runName).isRunning
+            series = coroutineScope {
+                runNames.mapIndexed { i, name ->
+                    async {
+                        val run = api.runState(entity, project, name)
+                        val s = api.sampledHistory(entity, project, name, listOf(metric), samples = FULL_SAMPLES, xKey = xKey).first()
+                        run to Series(if (runNames.size > 1) run.displayName else metric, s.x, s.y, colorIndex = if (runNames.size > 1) i else -1)
+                    }
+                }.awaitAll()
+            }.let { results ->
+                running = results.any { it.first.isRunning }
+                results.map { it.second }.filter { !it.isEmpty }
+            }
             error = null
         } catch (e: ApiException) {
             error = e.message
@@ -72,7 +85,7 @@ fun ChartScreen(
                     Column {
                         Text(metric, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            "$entity/$project/$runName",
+                            if (runNames.size > 1) "$entity/$project · ${runNames.size} runs" else "$entity/$project/${runNames.first()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -104,7 +117,7 @@ fun ChartScreen(
                 xKey, { ChartSettings.setXKey(prefs, it) },
             )
             Text(
-                if (window == null) "Pinch to zoom · drag to read values" else "Zoomed · two fingers to zoom or move · reset at the top right",
+                if (window == null) "Pinch to zoom · drag to read values" else "Two fingers to zoom or move · double-tap to reset",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -113,20 +126,19 @@ fun ChartScreen(
             when {
                 s == null && error != null -> CenteredMessage(error!!)
                 s == null -> CenteredLoading()
+                s.isEmpty() -> CenteredMessage("No data for $metric yet.")
                 else -> Card(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp)) {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         LineChart(
-                            chart = ChartData(metric, listOf(s), ChartSettings.xLabel(xKey)),
+                            chart = ChartData(metric, s, ChartSettings.xLabel(xKey)),
                             smoothing = ChartSettings.smoothing,
                             logY = ChartSettings.logY,
                             clipOutliers = ChartSettings.clipOutliers,
                             // Title + stats rows take about 44dp; the plot gets the rest.
                             height = (maxHeight - 64.dp).coerceAtLeast(160.dp),
+                            showStats = s.size == 1,
                             xWindow = window,
-                            onTransform = { t ->
-                                val next = ChartMath.zoomWindow(t.full, t.current, t.anchor, t.zoom, t.pan)
-                                window = if (next.start <= t.full.start && next.endInclusive >= t.full.endInclusive) null else next
-                            },
+                            onXWindowChange = { window = it },
                             modifier = ChartPadding,
                         )
                     }

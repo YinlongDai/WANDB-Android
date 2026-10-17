@@ -30,7 +30,19 @@ object Parsers {
             group = node.optStringOrNull("group"),
             jobType = node.optStringOrNull("jobType"),
             tags = if (tags == null) emptyList() else List(tags.length()) { tags.optString(it) },
+            summary = numericSummary(node.opt("summaryMetrics")),
         )
+    }
+
+    /** Top-level numeric summary values, skipping W&B internals. Nested and media values are ignored. */
+    fun numericSummary(summary: Any?): Map<String, Double> {
+        val obj = jsonObjectOf(summary) ?: return emptyMap()
+        val out = LinkedHashMap<String, Double>()
+        for (key in obj.keys()) {
+            if (key.startsWith("_wandb")) continue
+            numberOf(obj.opt(key))?.let { out[key] = it }
+        }
+        return out
     }
 
     /**
