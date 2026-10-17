@@ -1,0 +1,36 @@
+# Gradle / Kotlin
+.gradle/
+build/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local SDK paths and secrets
+/local.properties
+secrets.properties
+*.env
+google-services.json
+
+# Signing
+*.jks
+*.keystore
+keystore.properties
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS / archive junk
+.DS_Store
+__MACOSX/
+Thumbs.db
+*.log
