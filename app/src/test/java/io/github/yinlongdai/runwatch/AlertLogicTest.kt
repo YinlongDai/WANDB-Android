@@ -1,8 +1,8 @@
-package io.github.jiecaoboy.runwatch
+package io.github.yinlongdai.runwatch
 
-import io.github.jiecaoboy.runwatch.alerts.AlertLogic
-import io.github.jiecaoboy.runwatch.alerts.AlertLogic.Kind
-import io.github.jiecaoboy.runwatch.data.Run
+import io.github.yinlongdai.runwatch.alerts.AlertLogic
+import io.github.yinlongdai.runwatch.alerts.AlertLogic.Kind
+import io.github.yinlongdai.runwatch.data.Run
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

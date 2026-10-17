@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

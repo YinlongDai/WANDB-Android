@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.alerts
+package io.github.yinlongdai.runwatch.alerts
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -18,10 +18,10 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import io.github.jiecaoboy.runwatch.MainActivity
-import io.github.jiecaoboy.runwatch.R
-import io.github.jiecaoboy.runwatch.data.ApiException
-import io.github.jiecaoboy.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.MainActivity
+import io.github.yinlongdai.runwatch.R
+import io.github.yinlongdai.runwatch.data.ApiException
+import io.github.yinlongdai.runwatch.data.Prefs
 import java.util.concurrent.TimeUnit
 
 /**

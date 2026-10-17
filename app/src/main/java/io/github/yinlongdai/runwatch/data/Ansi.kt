@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.data
+package io.github.yinlongdai.runwatch.data
 
 /**
  * Minimal ANSI SGR parser for console logs. Produces styled spans without any

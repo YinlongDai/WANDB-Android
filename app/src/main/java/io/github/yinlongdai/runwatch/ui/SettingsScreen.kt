@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -32,8 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import io.github.jiecaoboy.runwatch.alerts.RunAlertWorker
-import io.github.jiecaoboy.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
+import io.github.yinlongdai.runwatch.data.Prefs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

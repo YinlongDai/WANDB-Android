@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,9 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import io.github.jiecaoboy.runwatch.data.ApiException
-import io.github.jiecaoboy.runwatch.data.Prefs
-import io.github.jiecaoboy.runwatch.data.WandbApi
+import io.github.yinlongdai.runwatch.data.ApiException
+import io.github.yinlongdai.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.data.WandbApi
 import kotlinx.coroutines.launch
 
 @Composable

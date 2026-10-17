@@ -1,8 +1,8 @@
-package io.github.jiecaoboy.runwatch
+package io.github.yinlongdai.runwatch
 
-import io.github.jiecaoboy.runwatch.data.Ansi
-import io.github.jiecaoboy.runwatch.data.ChartMath
-import io.github.jiecaoboy.runwatch.data.Parsers
+import io.github.yinlongdai.runwatch.data.Ansi
+import io.github.yinlongdai.runwatch.data.ChartMath
+import io.github.yinlongdai.runwatch.data.Parsers
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals

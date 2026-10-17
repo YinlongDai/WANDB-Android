@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -34,9 +34,9 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.jiecaoboy.runwatch.data.ChartData
-import io.github.jiecaoboy.runwatch.data.ChartMath
-import io.github.jiecaoboy.runwatch.data.Parsers
+import io.github.yinlongdai.runwatch.data.ChartData
+import io.github.yinlongdai.runwatch.data.ChartMath
+import io.github.yinlongdai.runwatch.data.Parsers
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.pow

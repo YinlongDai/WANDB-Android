@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -56,14 +56,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.jiecaoboy.runwatch.data.Ansi
-import io.github.jiecaoboy.runwatch.data.ApiException
-import io.github.jiecaoboy.runwatch.data.ChartData
-import io.github.jiecaoboy.runwatch.data.LogLine
-import io.github.jiecaoboy.runwatch.data.Prefs
-import io.github.jiecaoboy.runwatch.data.RunDetail
-import io.github.jiecaoboy.runwatch.data.Series
-import io.github.jiecaoboy.runwatch.data.WandbApi
+import io.github.yinlongdai.runwatch.data.Ansi
+import io.github.yinlongdai.runwatch.data.ApiException
+import io.github.yinlongdai.runwatch.data.ChartData
+import io.github.yinlongdai.runwatch.data.LogLine
+import io.github.yinlongdai.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.data.RunDetail
+import io.github.yinlongdai.runwatch.data.Series
+import io.github.yinlongdai.runwatch.data.WandbApi
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant

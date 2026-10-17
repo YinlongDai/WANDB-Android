@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -44,11 +44,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import io.github.jiecaoboy.runwatch.alerts.RunAlertWorker
-import io.github.jiecaoboy.runwatch.data.ApiException
-import io.github.jiecaoboy.runwatch.data.Prefs
-import io.github.jiecaoboy.runwatch.data.Project
-import io.github.jiecaoboy.runwatch.data.Viewer
+import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
+import io.github.yinlongdai.runwatch.data.ApiException
+import io.github.yinlongdai.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.data.Project
+import io.github.yinlongdai.runwatch.data.Viewer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

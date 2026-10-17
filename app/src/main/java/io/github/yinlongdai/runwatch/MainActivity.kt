@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch
+package io.github.yinlongdai.runwatch
 
 import android.app.Application
 import android.content.Intent
@@ -7,9 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
-import io.github.jiecaoboy.runwatch.alerts.RunAlertWorker
-import io.github.jiecaoboy.runwatch.ui.RunWatchNav
-import io.github.jiecaoboy.runwatch.ui.RunWatchTheme
+import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
+import io.github.yinlongdai.runwatch.ui.RunWatchNav
+import io.github.yinlongdai.runwatch.ui.RunWatchTheme
 
 class RunWatchApp : Application() {
     override fun onCreate() {

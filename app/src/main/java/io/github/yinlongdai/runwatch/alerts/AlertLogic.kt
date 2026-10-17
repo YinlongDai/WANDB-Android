@@ -1,6 +1,6 @@
-package io.github.jiecaoboy.runwatch.alerts
+package io.github.yinlongdai.runwatch.alerts
 
-import io.github.jiecaoboy.runwatch.data.Run
+import io.github.yinlongdai.runwatch.data.Run
 
 /**
  * Pure state-transition logic behind the run alerts, kept free of Android APIs

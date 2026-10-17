@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
@@ -9,8 +9,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import io.github.jiecaoboy.runwatch.alerts.RunAlertWorker
-import io.github.jiecaoboy.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
+import io.github.yinlongdai.runwatch.data.Prefs
 
 private fun enc(s: String) = Uri.encode(s)
 

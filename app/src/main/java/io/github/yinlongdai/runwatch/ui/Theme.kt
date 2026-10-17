@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

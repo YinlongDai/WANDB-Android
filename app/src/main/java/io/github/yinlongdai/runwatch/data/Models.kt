@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.data
+package io.github.yinlongdai.runwatch.data
 
 data class Viewer(
     val username: String,

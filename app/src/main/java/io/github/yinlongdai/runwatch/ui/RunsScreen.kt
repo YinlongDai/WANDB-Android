@@ -1,4 +1,4 @@
-package io.github.jiecaoboy.runwatch.ui
+package io.github.yinlongdai.runwatch.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,10 +40,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.jiecaoboy.runwatch.alerts.RunAlertWorker
-import io.github.jiecaoboy.runwatch.data.ApiException
-import io.github.jiecaoboy.runwatch.data.Prefs
-import io.github.jiecaoboy.runwatch.data.Run
+import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
+import io.github.yinlongdai.runwatch.data.ApiException
+import io.github.yinlongdai.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.data.Run
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

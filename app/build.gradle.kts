@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.jiecaoboy.runwatch"
+    namespace = "io.github.yinlongdai.runwatch"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.github.jiecaoboy.runwatch"
+        applicationId = "io.github.yinlongdai.runwatch"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
