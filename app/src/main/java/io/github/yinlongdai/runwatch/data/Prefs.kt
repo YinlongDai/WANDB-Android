@@ -77,6 +77,22 @@ class Prefs(context: Context) {
         sp.edit().apply { if (key == null) remove("runs_column:$path") else putString("runs_column:$path", key) }.apply()
     }
 
+    /**
+     * Runs hidden ("archived") on this device, as "entity/project/run". Only a
+     * local view setting: nothing changes on W&B, and runs can be restored.
+     */
+    var hiddenRuns: Set<String>
+        get() = sp.getStringSet(KEY_HIDDEN, emptySet())!!.toSet()
+        set(v) = sp.edit().putStringSet(KEY_HIDDEN, v).apply()
+
+    fun hideRuns(project: String, runs: Collection<String>) {
+        hiddenRuns = hiddenRuns + runs.map { "$project/$it" }
+    }
+
+    fun restoreRuns(project: String, runs: Collection<String>) {
+        hiddenRuns = hiddenRuns - runs.map { "$project/$it" }.toSet()
+    }
+
     fun toggleStar(path: String) {
         starred = if (path in starred) starred - path else starred + path
     }
@@ -97,6 +113,7 @@ class Prefs(context: Context) {
         const val KEY_STATES = "known_states"
         const val KEY_SEARCH_BOTTOM = "search_at_bottom"
         const val KEY_GLASS = "glass_enabled"
+        const val KEY_HIDDEN = "hidden_runs"
         const val KEY_PINNED = "pinned_metrics"
         const val KEY_X = "chart_x_key"
     }

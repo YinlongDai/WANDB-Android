@@ -10,6 +10,7 @@ The official W&B mobile app is iOS-only. RunWatch covers the core monitoring fea
 - **Console logs.** The last 1,000 lines with ANSI colors, refreshing every 5 s while the run is live.
 - **Chart tools.** Last / min / max on every chart, "ignore outliers" so one spike doesn't flatten a curve, step or wall-clock X axis, pinned metrics, and a full-screen view with pinch-to-zoom.
 - **Compare runs.** Long-press runs in a project to select up to 8, then overlay every metric with one color per run.
+- **Hide runs.** Long-press runs to hide them from the list on this phone (nothing changes on W&B). Restore them from the project's Hidden filter, with Undo, or all at once in Settings.
 - **Glass UI.** Frosted, translucent bars with content scrolling underneath (Android 12+; switch off in Settings on slower phones). Search bars float at the bottom by default.
 - **Stop runs.** This sends the same graceful stop signal as the Stop button in the web UI.
 - **Failure alerts.** Star a project and RunWatch checks it about every 15 minutes in the background. You get a notification when a running run crashes or fails, and optionally when one finishes.

@@ -18,10 +18,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,9 +35,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -112,15 +119,40 @@ fun RunsScreen(
         runs?.any { it.isRunning } == true
     }
 
-    // Long-press runs to select them for side-by-side comparison.
+    // Long-press runs to select them, then compare, hide or restore them.
     var selected by remember { mutableStateOf<List<String>>(emptyList()) }
     fun toggleSelect(run: Run) {
-        selected = if (run.name in selected) selected - run.name
-        else if (selected.size < MAX_COMPARE) selected + run.name else selected
+        selected = if (run.name in selected) selected - run.name else selected + run.name
     }
     val glass = rememberGlass(prefs)
+    val snackbar = remember { SnackbarHostState() }
+
+    // Hidden ("archived") runs: a local view setting, restorable from the Hidden filter.
+    var hidden by remember { mutableStateOf(prefs.hiddenRuns) }
+    var showHidden by rememberSaveable { mutableStateOf(false) }
+    val hiddenCount = hidden.count { it.startsWith("$path/") }
+    fun isHidden(run: Run) = "$path/${run.name}" in hidden
+    fun setHidden(names: List<String>, hide: Boolean) {
+        if (hide) prefs.hideRuns(path, names) else prefs.restoreRuns(path, names)
+        hidden = prefs.hiddenRuns
+        selected = emptyList()
+        scope.launch {
+            val noun = if (names.size == 1) "run" else "${names.size} runs"
+            val result = snackbar.showSnackbar(
+                message = if (hide) "Hid $noun" else "Restored $noun",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                if (hide) prefs.restoreRuns(path, names) else prefs.hideRuns(path, names)
+                hidden = prefs.hiddenRuns
+            }
+        }
+    }
+    LaunchedEffect(hiddenCount) { if (hiddenCount == 0) showHidden = false }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (selected.isNotEmpty()) {
                 GlassTopBar(
@@ -130,9 +162,22 @@ fun RunsScreen(
                         IconButton(onClick = { selected = emptyList() }) { Icon(Icons.Filled.Close, "Clear selection") }
                     },
                     actions = {
-                        TextButton(enabled = selected.size >= 2, onClick = { onCompare(selected) }) {
-                            Icon(Icons.AutoMirrored.Filled.CompareArrows, null, Modifier.padding(end = 6.dp))
-                            Text("Compare")
+                        if (showHidden) {
+                            TextButton(onClick = { setHidden(selected, hide = false) }) {
+                                Icon(Icons.Filled.Unarchive, null, Modifier.padding(end = 6.dp))
+                                Text("Restore")
+                            }
+                        } else {
+                            IconButton(onClick = { setHidden(selected, hide = true) }) {
+                                Icon(Icons.Filled.Archive, "Hide selected runs")
+                            }
+                            TextButton(
+                                enabled = selected.size in 2..MAX_COMPARE,
+                                onClick = { onCompare(selected) },
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.CompareArrows, null, Modifier.padding(end = 6.dp))
+                                Text(if (selected.size > MAX_COMPARE) "Max $MAX_COMPARE" else "Compare")
+                            }
                         }
                     },
                 )
@@ -181,7 +226,7 @@ fun RunsScreen(
                 else -> {
                     val summaryKeys = remember(list) { summaryColumns(list) }
                     val shown = sortRuns(
-                        list.filter { (!onlyActive || it.isRunning) && it.matches(query) },
+                        list.filter { (!onlyActive || it.isRunning) && it.matches(query) && isHidden(it) == showHidden },
                         column,
                         sort,
                     )
@@ -199,6 +244,14 @@ fun RunsScreen(
                                 ) {
                                     FilterChip(selected = !onlyActive, onClick = { onlyActive = false }, label = { Text("All") })
                                     FilterChip(selected = onlyActive, onClick = { onlyActive = true }, label = { Text("Running") })
+                                    if (hiddenCount > 0) {
+                                        FilterChip(
+                                            selected = showHidden,
+                                            onClick = { showHidden = !showHidden; selected = emptyList() },
+                                            label = { Text("Hidden ($hiddenCount)") },
+                                            leadingIcon = { Icon(Icons.Filled.Archive, null, Modifier.size(18.dp)) },
+                                        )
+                                    }
                                     Box {
                                         FilterChip(
                                             selected = column != null,
@@ -245,15 +298,27 @@ fun RunsScreen(
                                     modifier = Modifier.padding(16.dp, 4.dp),
                                 )
                             }
+                            if (showHidden) item {
+                                Text(
+                                    "Hidden runs are only hidden on this phone; they stay on W&B. Long-press to select runs, then Restore.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
                             if (shown.isEmpty()) item {
                                 Text(
-                                    if (query.isNotBlank()) "No loaded runs match \u201c$query\u201d." else "No running runs among the loaded ones.",
+                                    when {
+                                        query.isNotBlank() -> "No loaded runs match \u201c$query\u201d."
+                                        showHidden -> "No hidden runs among the loaded ones. Load more to find older ones."
+                                        else -> "No running runs among the loaded ones."
+                                    },
                                     modifier = Modifier.padding(16.dp),
                                 )
                             }
-                            if (selected.isEmpty() && shown.size >= 2) item {
+                            if (selected.isEmpty() && !showHidden && shown.size >= 2) item {
                                 Text(
-                                    "Tip: long-press runs to compare them.",
+                                    "Tip: long-press runs to compare or hide them.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

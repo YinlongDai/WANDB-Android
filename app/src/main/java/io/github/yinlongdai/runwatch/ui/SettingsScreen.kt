@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +47,7 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
     var notifyFinish by remember { mutableStateOf(prefs.notifyOnFinish) }
     var searchAtBottom by remember { mutableStateOf(prefs.searchAtBottom) }
     var glassOn by remember { mutableStateOf(prefs.glassEnabled) }
+    var hiddenCount by remember { mutableIntStateOf(prefs.hiddenRuns.size) }
     val glass = rememberGlass(prefs)
     fun hasPermission() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -138,6 +140,20 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
                         glassOn = it
                         prefs.glassEnabled = it
                     })
+                },
+            )
+            ListItem(
+                headlineContent = { Text("Hidden runs") },
+                supportingContent = {
+                    Text(
+                        if (hiddenCount == 0) "None. Long-press runs in a project to hide them; they stay on W&B."
+                        else "$hiddenCount hidden on this phone. Restore them here, or one by one from a project's Hidden filter."
+                    )
+                },
+                trailingContent = {
+                    TextButton(enabled = hiddenCount > 0, onClick = { prefs.hiddenRuns = emptySet(); hiddenCount = 0 }) {
+                        Text("Restore all")
+                    }
                 },
             )
             HorizontalDivider()
