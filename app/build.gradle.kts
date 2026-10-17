@@ -33,7 +33,10 @@ android {
                 storeFile = releaseKeystore
                 storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("RELEASE_KEY_ALIAS")
-                keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                // CI passes an empty string when the optional RELEASE_KEY_PASSWORD secret isn't set;
+                // PKCS12 keystores (keytool's default) use the store password for the key too.
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")?.takeIf { it.isNotEmpty() }
+                    ?: System.getenv("RELEASE_KEYSTORE_PASSWORD")
             }
         }
     }
