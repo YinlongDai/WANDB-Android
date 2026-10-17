@@ -135,6 +135,7 @@ fun ProjectsScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },

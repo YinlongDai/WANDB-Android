@@ -27,13 +27,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import io.github.yinlongdai.runwatch.BuildConfig
 import io.github.yinlongdai.runwatch.alerts.RunAlertWorker
 import io.github.yinlongdai.runwatch.data.Prefs
+import io.github.yinlongdai.runwatch.update.Updater
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,6 +118,8 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
                     TextButton(onClick = { prefs.signOut(); onSignedOut() }) { Text("Sign out") }
                 },
             )
+            HorizontalDivider()
+            UpdateSettingsRow()
             Text(
                 "RunWatch is an unofficial, open-source client and is not affiliated with Weights & Biases or CoreWeave.",
                 style = MaterialTheme.typography.bodySmall,
@@ -122,4 +128,39 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
             )
         }
     }
+}
+
+@Composable
+private fun UpdateSettingsRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val state = Updater.state
+    ListItem(
+        headlineContent = { Text("Version ${BuildConfig.VERSION_NAME}") },
+        supportingContent = {
+            Text(
+                when {
+                    !Updater.enabled -> "Development build: updates are installed from Android Studio or CI."
+                    state is Updater.State.Checking -> "Checking for updates…"
+                    state is Updater.State.UpToDate -> "You have the latest version."
+                    state is Updater.State.Available -> "Version ${state.info.versionName} is available."
+                    state is Updater.State.Downloading -> "Downloading ${(state.progress * 100).toInt()}%…"
+                    state is Updater.State.Failed -> state.message
+                    else -> "Updates come from this app's GitHub Releases."
+                }
+            )
+        },
+        trailingContent = {
+            if (Updater.enabled) {
+                if (state is Updater.State.Available) {
+                    TextButton(onClick = { scope.launch { Updater.downloadAndInstall(context, state.info) } }) { Text("Update") }
+                } else {
+                    TextButton(
+                        enabled = state !is Updater.State.Checking && state !is Updater.State.Downloading,
+                        onClick = { scope.launch { Updater.check(force = true) } },
+                    ) { Text("Check") }
+                }
+            }
+        },
+    )
 }

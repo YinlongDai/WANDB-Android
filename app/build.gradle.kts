@@ -5,6 +5,14 @@ plugins {
     id("app.cash.paparazzi")
 }
 
+// CI passes the run number so every build has a higher versionCode, which
+// Android requires to install an update in place. Local builds use 1.
+val buildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+
+// Release signing key, provided by CI from repository secrets. Without it
+// (local builds, forks) release builds fall back to the debug key.
+val releaseKeystore = System.getenv("RELEASE_KEYSTORE_FILE")?.let(::file)?.takeIf { it.exists() }
+
 android {
     namespace = "io.github.yinlongdai.runwatch"
     compileSdk = 35
@@ -13,16 +21,28 @@ android {
         applicationId = "io.github.yinlongdai.runwatch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = buildNumber
+        versionName = "0.2.$buildNumber"
+        // GitHub repo whose Releases the in-app updater checks.
+        buildConfigField("String", "UPDATE_REPO", "\"YinlongDai/WANDB-Android\"")
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so CI can produce an installable APK.
-            // Replace with your own signing config before publishing to Play.
-            signingConfig = signingConfigs.getByName("debug")
+            // Every update must be signed with the same key, or Android refuses to install it over the old one.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -35,6 +55,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
