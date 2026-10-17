@@ -26,8 +26,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Every ~15 minutes (Android's minimum for periodic work), checks the recent
- * runs of starred projects and notifies when a run that was running has
- * crashed or failed (optionally also when it finished).
+ * runs of starred projects and notifies when a run that was running or pending
+ * has crashed or failed (optionally also when it finished). See [AlertLogic].
  */
 class RunAlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -46,20 +46,30 @@ class RunAlertWorker(context: Context, params: WorkerParameters) : CoroutineWork
             } catch (e: ApiException) {
                 if (e.isAuthError) return Result.success()
                 // Keep the old states for this project so a transient error doesn't cause missed alerts.
-                previous.filterKeys { it.startsWith("$path/") }.let(next::putAll)
+                previous.filterKeys { it == path || it.startsWith("$path/") }.let(next::putAll)
                 continue
             }
-            for (run in page.runs) {
-                val key = "$path/${run.name}"
-                next[key] = run.state
-                val before = previous[key] ?: continue // first time we see it: no alert
-                if (before != "running" || run.state == before) continue
-                when {
-                    run.isFailure ->
-                        notify(key, "Run ${run.state}: ${run.displayName}", "$entity/$project")
-                    run.state == "finished" && prefs.notifyOnFinish ->
-                        notify(key, "Run finished: ${run.displayName}", "$entity/$project")
+            // Runs that were active last time but have scrolled past the newest page.
+            val runs = page.runs.toMutableList()
+            val missing = AlertLogic.missingActiveRuns(previous, path, page.runs)
+            // Over the cap: keep their old state and look them up on a later check.
+            val unresolved = missing.drop(MAX_EXTRA_FETCHES).toMutableList()
+            for (name in missing.take(MAX_EXTRA_FETCHES)) {
+                try {
+                    runs += api.runState(entity, project, name)
+                } catch (e: ApiException) {
+                    if (e.isAuthError) return Result.success()
+                    if (!e.isNotFound) unresolved += name // deleted runs are dropped
                 }
+            }
+            val outcome = AlertLogic.evaluate(previous, path, runs, prefs.notifyOnFinish, unresolved)
+            next.putAll(outcome.states)
+            for (alert in outcome.alerts) {
+                val title = when (alert.kind) {
+                    AlertLogic.Kind.FAILED -> "Run ${alert.run.state}: ${alert.run.displayName}"
+                    AlertLogic.Kind.FINISHED -> "Run finished: ${alert.run.displayName}"
+                }
+                notify(alert.key, title, path)
             }
         }
         prefs.knownStates = next
@@ -93,6 +103,9 @@ class RunAlertWorker(context: Context, params: WorkerParameters) : CoroutineWork
     companion object {
         private const val CHANNEL_ID = "run_alerts"
         private const val WORK_NAME = "run_alerts"
+
+        /** Cap on per-run lookups for active runs past the newest page, per project per check. */
+        private const val MAX_EXTRA_FETCHES = 20
 
         fun ensureChannel(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)

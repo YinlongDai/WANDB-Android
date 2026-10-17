@@ -12,7 +12,11 @@ import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
-class ApiException(message: String, val isAuthError: Boolean = false) : Exception(message)
+class ApiException(
+    message: String,
+    val isAuthError: Boolean = false,
+    val isNotFound: Boolean = false,
+) : Exception(message)
 
 /**
  * Thin client for the W&B GraphQL API (the same endpoint the Python SDK uses).
@@ -234,7 +238,7 @@ class WandbApi(baseUrl: String, apiKey: String) {
             JSONObject().put("entity", entity).put("project", project).put("run", run),
         )
         return data.optJSONObject("project")?.optJSONObject("run")
-            ?: throw ApiException("Run $entity/$project/$run not found")
+            ?: throw ApiException("Run $entity/$project/$run not found", isNotFound = true)
     }
 
     private suspend fun gql(query: String, variables: JSONObject = JSONObject()): JSONObject =
