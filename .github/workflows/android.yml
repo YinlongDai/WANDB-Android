@@ -57,12 +57,14 @@ jobs:
       # Each push to main becomes a GitHub Release; the app's updater installs the latest one.
       # Only when signed with the release key, so every published APK can update the previous one.
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.HAS_SIGNING_KEY == 'true'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.HAS_SIGNING_KEY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.2.${{ github.run_number }}
           name: RunWatch 0.2.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
+          # Manual runs have no head commit; fall back to the generated notes.
           body: ${{ github.event.head_commit.message }}
+          generate_release_notes: ${{ github.event_name != 'push' }}
           make_latest: "true"
           files: runwatch-0.2.${{ github.run_number }}.apk
