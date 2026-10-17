@@ -45,6 +45,7 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
     val context = LocalContext.current
     var alerts by remember { mutableStateOf(prefs.alertsEnabled) }
     var notifyFinish by remember { mutableStateOf(prefs.notifyOnFinish) }
+    var searchAtBottom by remember { mutableStateOf(prefs.searchAtBottom) }
     fun hasPermission() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     var permitted by remember { mutableStateOf(hasPermission()) }
@@ -103,6 +104,17 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit, onSignedOut: () -> Unit) {
                 headlineContent = { Text("Starred projects") },
                 supportingContent = {
                     Text(prefs.starred.sorted().joinToString("\n").ifEmpty { "None yet. Tap the star on a project to watch it." })
+                },
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Search bar at bottom") },
+                supportingContent = { Text("Float search boxes above the bottom of the screen, within thumb reach. Off keeps them above the list.") },
+                trailingContent = {
+                    Switch(checked = searchAtBottom, onCheckedChange = {
+                        searchAtBottom = it
+                        prefs.searchAtBottom = it
+                    })
                 },
             )
             HorizontalDivider()

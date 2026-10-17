@@ -3,7 +3,9 @@ package io.github.yinlongdai.runwatch.ui
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,8 +17,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,13 +30,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -47,6 +51,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -68,7 +73,14 @@ import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
 
-private val TABS = listOf("Charts", "System", "Logs", "Overview")
+private data class RunTab(val label: String, val icon: ImageVector)
+
+private val TABS = listOf(
+    RunTab("Charts", Icons.AutoMirrored.Filled.ShowChart),
+    RunTab("System", Icons.Filled.Memory),
+    RunTab("Logs", Icons.Filled.Terminal),
+    RunTab("Overview", Icons.Filled.Info),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +113,8 @@ fun RunDetailScreen(
     val run = detail?.run
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        // Tabs live at the bottom, within thumb reach; labels never wrap.
+        bottomBar = { RunTabsBar(tab) { tab = it } },
         topBar = {
             TopAppBar(
                 title = {
@@ -129,18 +143,13 @@ fun RunDetailScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
-            TabRow(selectedTabIndex = tab) {
-                TABS.forEachIndexed { i, title ->
-                    Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
-                }
-            }
+        Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
             val d = detail
             when {
                 d == null && error != null -> CenteredMessage(error!!)
                 d == null -> CenteredLoading()
                 else -> when (tab) {
-                    0 -> ChartsTab(api, entity, project, d)
+                    0 -> ChartsTab(api, entity, project, d, prefs.searchAtBottom)
                     1 -> SystemTab(api, entity, project, runName, d.run.isRunning)
                     2 -> LogsTab(api, entity, project, runName, d.run.isRunning)
                     else -> OverviewTab(d)
@@ -173,6 +182,20 @@ fun RunDetailScreen(
 }
 
 @Composable
+fun RunTabsBar(selected: Int, onSelect: (Int) -> Unit) {
+    NavigationBar {
+        TABS.forEachIndexed { i, t ->
+            NavigationBarItem(
+                selected = selected == i,
+                onClick = { onSelect(i) },
+                icon = { Icon(t.icon, null) },
+                label = { Text(t.label, maxLines = 1, softWrap = false) },
+            )
+        }
+    }
+}
+
+@Composable
 private fun ChartControls(
     smoothing: Float,
     onSmoothing: (Float) -> Unit,
@@ -199,7 +222,7 @@ private fun ChartControls(
 private const val CHART_PAGE = 20
 
 @Composable
-private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: RunDetail) {
+private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: RunDetail, searchAtBottom: Boolean) {
     val runName = detail.run.name
     var query by rememberSaveable { mutableStateOf("") }
     var smoothing by rememberSaveable { mutableFloatStateOf(0f) }
@@ -230,42 +253,50 @@ private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: Ru
         return
     }
 
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it; limit = CHART_PAGE },
-                placeholder = { Text("Filter ${detail.metricKeys.size} metrics") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            )
-        }
-        item { ChartControls(smoothing, { smoothing = it }, logY, { logY = it }) }
-        error?.let { msg ->
-            item { Text("Couldn't load history: $msg", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
-        }
-        if (loading && series.isEmpty()) item {
-            androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
-        }
-        // Section header whenever the metric prefix changes ("train/loss" -> "train").
-        visible.forEachIndexed { i, key ->
-            val section = key.substringBeforeLast('/', "")
-            if (i == 0 || visible[i - 1].substringBeforeLast('/', "") != section) {
-                item(key = "section:$i:$section") {
-                    Text(
-                        section.ifEmpty { "Charts" },
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 16.dp, top = 8.dp),
-                    )
-                }
+    SearchLayout(
+        atBottom = searchAtBottom,
+        search = { m, floating ->
+            PillSearchField(query, { query = it; limit = CHART_PAGE }, "Filter ${detail.metricKeys.size} metrics", m, floating)
+        },
+    ) { listPadding ->
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 4.dp, bottom = listPadding.calculateBottomPadding() + 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item { ChartControls(smoothing, { smoothing = it }, logY, { logY = it }) }
+            error?.let { msg ->
+                item { Text("Couldn't load history: $msg", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
             }
-            item(key = key) { MetricCard(key, series[key], smoothing, logY) }
-        }
-        if (keys.size > limit) item {
-            TextButton(onClick = { limit += CHART_PAGE }, modifier = Modifier.fillMaxWidth()) {
-                Text("Show ${minOf(CHART_PAGE, keys.size - limit)} more of ${keys.size - limit}")
+            if (loading && series.isEmpty()) item {
+                androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
+            }
+            if (visible.isEmpty()) item {
+                Text(
+                    "No metrics match \u201c$query\u201d.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            // Section header whenever the metric prefix changes ("train/loss" -> "train").
+            visible.forEachIndexed { i, key ->
+                val section = key.substringBeforeLast('/', "")
+                if (i == 0 || visible[i - 1].substringBeforeLast('/', "") != section) {
+                    item(key = "section:$i:$section") {
+                        Text(
+                            section.ifEmpty { "Charts" },
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+                        )
+                    }
+                }
+                item(key = key) { MetricCard(key, series[key], smoothing, logY) }
+            }
+            if (keys.size > limit) item {
+                TextButton(onClick = { limit += CHART_PAGE }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Show ${minOf(CHART_PAGE, keys.size - limit)} more of ${keys.size - limit}")
+                }
             }
         }
     }

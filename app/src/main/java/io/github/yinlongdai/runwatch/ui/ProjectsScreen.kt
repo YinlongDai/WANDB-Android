@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -28,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,6 +68,7 @@ fun ProjectsScreen(
     var starred by remember { mutableStateOf(prefs.starred) }
     var reload by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
+    val searchAtBottom = remember { prefs.searchAtBottom }
     var menuOpen by remember { mutableStateOf(false) }
 
     // Starring a project turns on alerts, so ask for notification permission the first time.
@@ -134,42 +134,39 @@ fun ProjectsScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
             UpdateBanner(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Filter projects") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-            val list = projects
-            when {
-                error != null && list == null -> CenteredMessage(error!!, "Retry") { reload++ }
-                list == null -> CenteredLoading()
-                list.isEmpty() -> CenteredMessage("No projects in $entity yet.")
-                else -> {
-                    val filtered = list.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
-                    val (pinned, rest) = filtered.partition { it.path in starred }
-                    PullToRefreshBox(
-                        isRefreshing = refreshing,
-                        onRefresh = { refreshing = true; reload++ },
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        LazyColumn(Modifier.fillMaxSize()) {
-                            if (pinned.isNotEmpty()) {
-                                item { SectionHeader("Starred · alerts on") }
-                                items(pinned, key = { "s/" + it.path }) { p ->
-                                    ProjectRow(p, true, onOpenProject) {
+            SearchLayout(
+                atBottom = searchAtBottom,
+                search = { m, floating -> PillSearchField(query, { query = it }, "Filter projects", m, floating) },
+            ) { listPadding ->
+                val list = projects
+                when {
+                    error != null && list == null -> CenteredMessage(error!!, "Retry") { reload++ }
+                    list == null -> CenteredLoading()
+                    list.isEmpty() -> CenteredMessage("No projects in $entity yet.")
+                    else -> {
+                        val filtered = list.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+                        val (pinned, rest) = filtered.partition { it.path in starred }
+                        PullToRefreshBox(
+                            isRefreshing = refreshing,
+                            onRefresh = { refreshing = true; reload++ },
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding) {
+                                if (pinned.isNotEmpty()) {
+                                    item { SectionHeader("Starred · alerts on") }
+                                    items(pinned, key = { "s/" + it.path }) { p ->
+                                        ProjectRow(p, true, onOpenProject) {
+                                            prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
+                                        }
+                                    }
+                                    item { HorizontalDivider() }
+                                }
+                                items(rest, key = { it.path }) { p ->
+                                    ProjectRow(p, false, onOpenProject) {
                                         prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
                                     }
-                                }
-                                item { HorizontalDivider() }
-                            }
-                            items(rest, key = { it.path }) { p ->
-                                ProjectRow(p, false, onOpenProject) {
-                                    prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
                                 }
                             }
                         }

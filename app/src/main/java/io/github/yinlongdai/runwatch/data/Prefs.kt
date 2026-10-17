@@ -38,6 +38,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_NOTIFY_FINISH, false)
         set(v) = sp.edit().putBoolean(KEY_NOTIFY_FINISH, v).apply()
 
+    /** Search bars float at the bottom of the screen (true) or sit above the list (false). */
+    var searchAtBottom: Boolean
+        get() = sp.getBoolean(KEY_SEARCH_BOTTOM, true)
+        set(v) = sp.edit().putBoolean(KEY_SEARCH_BOTTOM, v).apply()
+
     /** Last seen state per run ("entity/project/run" -> state), used by the alert worker. */
     var knownStates: Map<String, String>
         get() {
@@ -68,5 +73,6 @@ class Prefs(context: Context) {
         const val KEY_ALERTS = "alerts_enabled"
         const val KEY_NOTIFY_FINISH = "notify_finish"
         const val KEY_STATES = "known_states"
+        const val KEY_SEARCH_BOTTOM = "search_at_bottom"
     }
 }
