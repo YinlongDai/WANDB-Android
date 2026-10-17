@@ -33,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +68,7 @@ fun ProjectsScreen(
     var query by remember { mutableStateOf("") }
     var starred by remember { mutableStateOf(prefs.starred) }
     var reload by remember { mutableIntStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
     // Starring a project turns on alerts, so ask for notification permission the first time.
@@ -96,13 +98,14 @@ fun ProjectsScreen(
         val e = entity ?: return@LaunchedEffect
         if (api == null) return@LaunchedEffect
         prefs.lastEntity = e
-        projects = null
+        if (!refreshing) projects = null // pull-to-refresh keeps the list on screen
         error = null
         try {
             projects = api.projects(e)
         } catch (ex: ApiException) {
             error = ex.message
         }
+        refreshing = false
     }
 
     Scaffold(
@@ -148,19 +151,25 @@ fun ProjectsScreen(
                 else -> {
                     val filtered = list.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
                     val (pinned, rest) = filtered.partition { it.path in starred }
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        if (pinned.isNotEmpty()) {
-                            item { SectionHeader("Starred · alerts on") }
-                            items(pinned, key = { "s/" + it.path }) { p ->
-                                ProjectRow(p, true, onOpenProject) {
+                    PullToRefreshBox(
+                        isRefreshing = refreshing,
+                        onRefresh = { refreshing = true; reload++ },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            if (pinned.isNotEmpty()) {
+                                item { SectionHeader("Starred · alerts on") }
+                                items(pinned, key = { "s/" + it.path }) { p ->
+                                    ProjectRow(p, true, onOpenProject) {
+                                        prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
+                                    }
+                                }
+                                item { HorizontalDivider() }
+                            }
+                            items(rest, key = { it.path }) { p ->
+                                ProjectRow(p, false, onOpenProject) {
                                     prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
                                 }
-                            }
-                            item { HorizontalDivider() }
-                        }
-                        items(rest, key = { it.path }) { p ->
-                            ProjectRow(p, false, onOpenProject) {
-                                prefs.toggleStar(p.path); starred = prefs.starred; RunAlertWorker.sync(context)
                             }
                         }
                     }

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.yinlongdai.runwatch.data.ChartData
@@ -104,14 +105,56 @@ fun LineChart(
     val prepared = remember(chart, smoothing, logY) { prepare(chart, smoothing, logY) }
     var cursorX by remember(chart) { mutableStateOf<Double?>(null) }
     val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
     val axisColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = TextStyle(fontSize = 10.sp, color = labelColor)
-    val leftPad = 46.dp
     val bottomPad = 18.dp
 
+    // Y ticks and their measured labels. The gutter is exactly as wide as the
+    // widest label (plus a small gap), so short labels don't waste space.
+    val yAxis = remember(prepared, logY, labelStyle) {
+        if (prepared == null) return@remember null
+        val ticks = ChartMath.niceTicks(prepared.yMin, prepared.yMax, 4)
+            .filter { it >= prepared.yMin && it <= prepared.yMax }
+        val labels = if (logY) ticks.map { ChartMath.compact(10.0.pow(it)) } else ChartMath.axisLabels(ticks)
+        ticks.zip(labels.map { measurer.measure(it, labelStyle) })
+    }
+    val gapPx = with(density) { 4.dp.toPx() }
+    val leftPx = (yAxis?.maxOfOrNull { it.second.size.width }?.toFloat() ?: 0f) + gapPx
+
+    // Value at the touched position (nearest point per series), or null.
+    val readout: List<String>? = cursorX?.let { cx ->
+        prepared?.series?.map { s ->
+            val v = (s.smooth ?: s.raw)[nearestIndex(s.x, cx)]
+            Parsers.formatNumber(if (logY) 10.0.pow(v) else v)
+        }
+    }
+    val readoutX = cursorX?.let { cx -> prepared?.series?.firstOrNull()?.let { it.x[nearestIndex(it.x, cx)] } }
+
     Column(modifier) {
-        Text(chart.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Title row; the touched value shows on the right so the card doesn't change height.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                chart.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (readoutX != null) {
+                Text(
+                    buildString {
+                        append(chart.xLabel).append(' ').append(Parsers.formatNumber(readoutX))
+                        if (readout != null && readout.size == 1) append(" · ").append(readout[0])
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
         if (prepared == null) {
             Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
                 Text(
@@ -123,60 +166,50 @@ fun LineChart(
             return@Column
         }
 
-        // Value readout for the touched position (nearest point per series).
-        val readout = cursorX?.let { cx ->
-            val parts = prepared.series.mapIndexed { i, s ->
-                val j = nearestIndex(s.x, cx)
-                val v = (s.smooth ?: s.raw)[j]
-                val shown = if (logY) 10.0.pow(v) else v
-                Triple(i, s.label, Parsers.formatNumber(shown)) to s.x[j]
-            }
-            val xVal = parts.firstOrNull()?.second
-            Pair(xVal, parts.map { it.first })
-        }
-
         Canvas(
             Modifier
                 .fillMaxWidth()
                 .height(180.dp)
                 .padding(top = 6.dp)
-                .pointerInput(prepared) {
-                    detectTapGestures(onPress = { pos ->
-                        cursorX = toDataX(pos.x, size.width.toFloat(), leftPad.toPx(), prepared)
-                        tryAwaitRelease()
+                .pointerInput(prepared, leftPx) {
+                    // Tap toggles the cursor: tap again near it to clear.
+                    detectTapGestures(onTap = { pos ->
+                        val x = toDataX(pos.x, size.width.toFloat(), leftPx, prepared)
+                        val cur = cursorX
+                        val near = cur != null &&
+                            abs(pos.x - toPx(cur, size.width.toFloat(), leftPx, prepared)) < 24.dp.toPx()
+                        cursorX = if (near) null else x
                     })
                 }
-                .pointerInput(prepared) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = { },
-                        onHorizontalDrag = { change, _ ->
-                            cursorX = toDataX(change.position.x, size.width.toFloat(), leftPad.toPx(), prepared)
-                        },
-                    )
+                .pointerInput(prepared, leftPx) {
+                    detectHorizontalDragGestures { change, _ ->
+                        cursorX = toDataX(change.position.x, size.width.toFloat(), leftPx, prepared)
+                    }
                 },
         ) {
-            val left = leftPad.toPx()
+            if (size.width <= leftPx || size.height <= bottomPad.toPx()) return@Canvas
+            val left = leftPx
+            val labelHalf = (yAxis?.firstOrNull()?.second?.size?.height ?: 0) / 2f
+            // Leave room above the plot so the top Y label isn't clipped.
+            val top = labelHalf
             val bottom = size.height - bottomPad.toPx()
             val width = size.width - left
             fun px(x: Double) = left + ((x - prepared.xMin) / (prepared.xMax - prepared.xMin) * width).toFloat()
-            fun py(y: Double) = bottom - ((y - prepared.yMin) / (prepared.yMax - prepared.yMin) * bottom).toFloat()
+            fun py(y: Double) = bottom - ((y - prepared.yMin) / (prepared.yMax - prepared.yMin) * (bottom - top)).toFloat()
 
-            // Y grid + labels
-            for (t in ChartMath.niceTicks(prepared.yMin, prepared.yMax, 4)) {
+            // Y grid + right-aligned labels
+            yAxis?.forEach { (t, layout) ->
                 val y = py(t)
-                if (y < 0 || y > bottom) continue
                 drawLine(axisColor, Offset(left, y), Offset(size.width, y), strokeWidth = 1f,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
-                val text = if (logY) ChartMath.compact(10.0.pow(t)) else ChartMath.compact(t)
-                val layout = measurer.measure(text, labelStyle)
-                drawText(layout, topLeft = Offset(left - layout.size.width - 6f, y - layout.size.height / 2f))
+                val ly = (y - layout.size.height / 2f).coerceIn(0f, maxOf(0f, size.height - layout.size.height))
+                drawText(layout, topLeft = Offset(left - gapPx - layout.size.width, ly))
             }
             // X labels
-            for (t in ChartMath.niceTicks(prepared.xMin, prepared.xMax, 4)) {
-                val x = px(t)
-                if (x < left || x > size.width) continue
-                val layout = measurer.measure(ChartMath.compact(t), labelStyle)
-                val lx = (x - layout.size.width / 2f).coerceIn(left, size.width - layout.size.width)
+            val xTicks = ChartMath.niceTicks(prepared.xMin, prepared.xMax, 4).filter { px(it) in left..size.width }
+            xTicks.zip(ChartMath.axisLabels(xTicks)).forEach { (t, text) ->
+                val layout = measurer.measure(text, labelStyle)
+                val lx = (px(t) - layout.size.width / 2f).coerceIn(left, maxOf(left, size.width - layout.size.width))
                 drawText(layout, topLeft = Offset(lx, bottom + 3f))
             }
             drawLine(axisColor, Offset(left, bottom), Offset(size.width, bottom), strokeWidth = 1.5f)
@@ -198,7 +231,7 @@ fun LineChart(
 
             cursorX?.let { cx ->
                 val x = px(cx).coerceIn(left, size.width)
-                drawLine(labelColor, Offset(x, 0f), Offset(x, bottom), strokeWidth = 1f)
+                drawLine(labelColor, Offset(x, top), Offset(x, bottom), strokeWidth = 1f)
                 prepared.series.forEachIndexed { i, s ->
                     val j = nearestIndex(s.x, cx)
                     val v = (s.smooth ?: s.raw)[j]
@@ -207,23 +240,8 @@ fun LineChart(
             }
         }
 
-        if (readout != null) {
-            val (xVal, values) = readout
-            Text(
-                buildString {
-                    append(chart.xLabel).append(' ').append(xVal?.let { Parsers.formatNumber(it) } ?: "")
-                    values.forEach { (_, label, v) ->
-                        append("   ")
-                        if (prepared.series.size > 1) append(label).append(": ")
-                        append(v)
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = labelColor,
-                maxLines = 2,
-            )
-        }
         if (prepared.series.size > 1) {
+            // Legend; while touching, each entry also shows that series' value.
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.padding(top = 4.dp),
@@ -231,7 +249,11 @@ fun LineChart(
                 prepared.series.forEachIndexed { i, s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).background(ChartPalette[i % ChartPalette.size], CircleShape))
-                        Text(" " + s.label, style = MaterialTheme.typography.labelSmall, color = labelColor)
+                        Text(
+                            " " + s.label + (readout?.getOrNull(i)?.let { ": $it" } ?: ""),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = labelColor,
+                        )
                     }
                 }
             }
@@ -243,6 +265,9 @@ private fun toDataX(px: Float, width: Float, left: Float, p: Prepared): Double {
     val frac = ((px - left) / (width - left)).coerceIn(0f, 1f)
     return p.xMin + frac * (p.xMax - p.xMin)
 }
+
+private fun toPx(x: Double, width: Float, left: Float, p: Prepared): Float =
+    left + ((x - p.xMin) / (p.xMax - p.xMin) * (width - left)).toFloat()
 
 private fun nearestIndex(xs: DoubleArray, x: Double): Int {
     var lo = 0

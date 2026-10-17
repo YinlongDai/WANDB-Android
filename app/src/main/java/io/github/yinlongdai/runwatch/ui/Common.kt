@@ -120,3 +120,10 @@ fun formatDuration(seconds: Long): String {
         else -> "${s}s"
     }
 }
+
+/** Wall-clock runtime: until now for a live run, else until its last heartbeat. Empty if unknown. */
+fun runDuration(run: io.github.yinlongdai.runwatch.data.Run, now: Instant = Instant.now()): String {
+    val start = parseWandbTime(run.createdAt) ?: return ""
+    val end = if (run.isRunning) now else parseWandbTime(run.heartbeatAt) ?: return ""
+    return formatDuration(Duration.between(start, end).seconds)
+}

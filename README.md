@@ -24,6 +24,7 @@ You need Android Studio (or JDK 17 plus the Android SDK). Then run:
 ```bash
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest    # JVM unit tests for parsing and chart math
+./gradlew recordPaparazziDebug  # render chart screenshots to app/src/test/snapshots/images
 ```
 
 ## How it works

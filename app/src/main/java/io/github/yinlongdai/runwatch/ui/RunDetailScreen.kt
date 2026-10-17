@@ -248,20 +248,20 @@ private fun ChartsTab(api: WandbApi, entity: String, project: String, detail: Ru
         if (loading && series.isEmpty()) item {
             androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
         }
-        items(visible, key = { it }) { key ->
-            val s = series[key]
-            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                if (s == null) {
-                    Text(key, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(12.dp))
-                } else {
-                    LineChart(
-                        chart = ChartData(title = key, series = listOf(s), xLabel = "step"),
-                        smoothing = smoothing,
-                        logY = logY,
-                        modifier = Modifier.padding(12.dp),
+        // Section header whenever the metric prefix changes ("train/loss" -> "train").
+        visible.forEachIndexed { i, key ->
+            val section = key.substringBeforeLast('/', "")
+            if (i == 0 || visible[i - 1].substringBeforeLast('/', "") != section) {
+                item(key = "section:$i:$section") {
+                    Text(
+                        section.ifEmpty { "Charts" },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 16.dp, top = 8.dp),
                     )
                 }
             }
+            item(key = key) { MetricCard(key, series[key], smoothing, logY) }
         }
         if (keys.size > limit) item {
             TextButton(onClick = { limit += CHART_PAGE }, modifier = Modifier.fillMaxWidth()) {
@@ -294,8 +294,8 @@ private fun SystemTab(api: WandbApi, entity: String, project: String, runName: S
         else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Spacer8() }
             items(list, key = { it.title }) { chart ->
-                Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                    LineChart(chart, smoothing = 0f, logY = false, modifier = Modifier.padding(12.dp))
+                Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    LineChart(chart, smoothing = 0f, logY = false, modifier = ChartPadding)
                 }
             }
             item { Spacer8() }
@@ -435,6 +435,27 @@ private fun KeyValue(key: String, value: String) {
         )
         SelectionContainer(Modifier.weight(0.55f)) {
             Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+/** Tight left padding: the Y-axis labels already sit inside the chart's own gutter. */
+private val ChartPadding = Modifier.padding(start = 8.dp, end = 12.dp, top = 10.dp, bottom = 8.dp)
+
+@Composable
+private fun MetricCard(key: String, series: Series?, smoothing: Float, logY: Boolean) {
+    // The section header already shows the prefix, so the card shows the short name.
+    val title = key.substringAfterLast('/')
+    Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        if (series == null) {
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(12.dp))
+        } else {
+            LineChart(
+                chart = ChartData(title = title, series = listOf(series), xLabel = "step"),
+                smoothing = smoothing,
+                logY = logY,
+                modifier = ChartPadding,
+            )
         }
     }
 }

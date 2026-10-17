@@ -110,6 +110,18 @@ class ParsersTest {
     }
 
     @Test
+    fun axisLabels_useStepPrecision() {
+        assertEquals(listOf("0.00", "0.25", "0.50", "0.75", "1.00"), ChartMath.axisLabels(listOf(0.0, 0.25, 0.5, 0.75, 1.0)))
+        assertEquals(listOf("0", "500", "1000"), ChartMath.axisLabels(listOf(0.0, 500.0, 1000.0)))
+        assertEquals(listOf("25k", "50k", "75k"), ChartMath.axisLabels(listOf(25_000.0, 50_000.0, 75_000.0)))
+        assertEquals(listOf("1.5M", "2.0M", "2.5M"), ChartMath.axisLabels(listOf(1.5e6, 2e6, 2.5e6)))
+        assertEquals(listOf("0", "0.5B", "1.0B"), ChartMath.axisLabels(listOf(0.0, 5e8, 1e9)))
+        assertEquals(listOf("0.980", "0.985", "0.990"), ChartMath.axisLabels(listOf(0.98, 0.985, 0.99)))
+        assertEquals(listOf("2e-5", "4e-5", "6e-5"), ChartMath.axisLabels(listOf(2e-5, 4e-5, 6e-5)))
+        assertEquals(listOf("-0.5", "0.0", "0.5"), ChartMath.axisLabels(listOf(-0.5, -1e-17, 0.5)))
+    }
+
+    @Test
     fun ansi_parsesColorsAndStripsOtherEscapes() {
         val spans = Ansi.parse("\u001B[31mERR\u001B[0m ok\u001B[2K")
         assertEquals(2, spans.size)

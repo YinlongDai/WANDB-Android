@@ -27,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,6 +69,7 @@ fun RunsScreen(
     var onlyActive by remember { mutableStateOf(false) }
     var isStarred by remember { mutableStateOf(path in prefs.starred) }
     var reload by remember { mutableIntStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
 
     // Refresh the first page every 15 s while any run is live; otherwise load once.
     PollingEffect(path, reload, intervalMs = 15_000) {
@@ -87,6 +89,7 @@ fun RunsScreen(
         } catch (e: ApiException) {
             error = e.message
         }
+        refreshing = false
         runs?.any { it.isRunning } == true
     }
 
@@ -132,42 +135,48 @@ fun RunsScreen(
                 list.isEmpty() -> CenteredMessage("No runs in this project yet.")
                 else -> {
                     val shown = if (onlyActive) list.filter { it.isRunning } else list
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        if (error != null) item {
-                            Text(
-                                "Couldn't refresh: $error",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(16.dp, 4.dp),
-                            )
-                        }
-                        if (shown.isEmpty()) item {
-                            Text("No running runs among the loaded ones.", modifier = Modifier.padding(16.dp))
-                        }
-                        items(shown, key = { it.name }) { run ->
-                            RunRow(run) { onOpenRun(run) }
-                            HorizontalDivider()
-                        }
-                        if (hasMore && !onlyActive) item {
-                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                                if (loadingMore) CircularProgressIndicator(Modifier.size(24.dp))
-                                else TextButton(onClick = {
-                                    val a = api ?: return@TextButton
-                                    loadingMore = true
-                                    scope.launch {
-                                        try {
-                                            val page = a.runs(entity, project, cursor)
-                                            val existing = runs.orEmpty()
-                                            runs = existing + page.runs.filter { r -> existing.none { it.name == r.name } }
-                                            cursor = page.endCursor
-                                            hasMore = page.hasNextPage
-                                        } catch (e: ApiException) {
-                                            error = e.message
-                                        } finally {
-                                            loadingMore = false
+                    PullToRefreshBox(
+                        isRefreshing = refreshing,
+                        onRefresh = { refreshing = true; reload++ },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            if (error != null) item {
+                                Text(
+                                    "Couldn't refresh: $error",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(16.dp, 4.dp),
+                                )
+                            }
+                            if (shown.isEmpty()) item {
+                                Text("No running runs among the loaded ones.", modifier = Modifier.padding(16.dp))
+                            }
+                            items(shown, key = { it.name }) { run ->
+                                RunRow(run) { onOpenRun(run) }
+                                HorizontalDivider()
+                            }
+                            if (hasMore && !onlyActive) item {
+                                Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                    if (loadingMore) CircularProgressIndicator(Modifier.size(24.dp))
+                                    else TextButton(onClick = {
+                                        val a = api ?: return@TextButton
+                                        loadingMore = true
+                                        scope.launch {
+                                            try {
+                                                val page = a.runs(entity, project, cursor)
+                                                val existing = runs.orEmpty()
+                                                runs = existing + page.runs.filter { r -> existing.none { it.name == r.name } }
+                                                cursor = page.endCursor
+                                                hasMore = page.hasNextPage
+                                            } catch (e: ApiException) {
+                                                error = e.message
+                                            } finally {
+                                                loadingMore = false
+                                            }
                                         }
-                                    }
-                                }) { Text("Load more") }
+                                    }) { Text("Load more") }
+                                }
                             }
                         }
                     }
@@ -199,6 +208,7 @@ private fun RunRow(run: Run, onClick: () -> Unit) {
         val meta = listOfNotNull(
             run.user,
             relativeTime(run.createdAt).takeIf { it.isNotEmpty() },
+            runDuration(run).takeIf { it.isNotEmpty() }?.let { if (run.isRunning) "running $it" else "ran $it" },
             run.group,
             run.jobType,
         ).joinToString(" · ")

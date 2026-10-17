@@ -66,6 +66,53 @@ object ChartMath {
         return ticks
     }
 
+    /**
+     * Labels for evenly spaced axis ticks, all with the same precision and only
+     * as many digits as the tick step needs: 0.05 step -> "0.10", "0.15";
+     * 25000 step -> "25k", "50k"; 2e-5 step -> "2e-5", "4e-5". Keeps the
+     * Y-axis gutter as narrow as the data allows.
+     */
+    fun axisLabels(ticks: List<Double>): List<String> {
+        if (ticks.size < 2) return ticks.map(::compact)
+        val step = abs(ticks[1] - ticks[0])
+        val maxAbs = ticks.maxOf { abs(it) }
+        if (step == 0.0 || !step.isFinite()) return ticks.map(::compact)
+        val (div, suffix) = when {
+            maxAbs >= 1e9 -> 1e9 to "B"
+            maxAbs >= 1e6 -> 1e6 to "M"
+            maxAbs >= 1e4 -> 1e3 to "k"
+            else -> 1.0 to ""
+        }
+        if (div == 1.0 && maxAbs < 1e-3) {
+            val digits = (floor(log10(maxAbs)) - floor(log10(step))).toInt().coerceIn(0, 4)
+            return ticks.map { t ->
+                if (t == 0.0) "0" else cleanExponent(String.format(java.util.Locale.US, "%.${digits}e", t))
+            }
+        }
+        val decimals = decimalsFor(step / div)
+        return ticks.map { t ->
+            if (suffix.isNotEmpty() && abs(t) < step * 1e-6) return@map "0" // not "0.0B"
+            val s = String.format(java.util.Locale.US, "%.${decimals}f", t / div)
+            // "-0.00" -> "0.00"
+            (if (s.startsWith('-') && s.drop(1).all { it == '0' || it == '.' }) s.drop(1) else s) + suffix
+        }
+    }
+
+    /** Fewest decimals that show [step] exactly (2.5 -> 1, 0.05 -> 2, 20 -> 0). */
+    private fun decimalsFor(step: Double): Int {
+        for (d in 0..8) {
+            val scaled = step * 10.0.pow(d)
+            if (abs(scaled - Math.rint(scaled)) < 1e-6 * maxOf(1.0, scaled)) return d
+        }
+        return 8
+    }
+
+    /** "2.0e-05" -> "2.0e-5", "1e+03" -> "1e3". */
+    private fun cleanExponent(s: String): String =
+        s.replace(Regex("e([+-])0*(\\d)")) { m ->
+            "e" + (if (m.groupValues[1] == "-") "-" else "") + m.groupValues[2]
+        }
+
     /** Compact axis label: 1.2k, 3.4M, 0.0012, 1e-6. */
     fun compact(v: Double): String {
         val a = abs(v)
