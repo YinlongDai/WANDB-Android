@@ -38,7 +38,7 @@ class IconScreenshotTest {
             val layer = Modifier.size(size * 1.5f)
             if (!themed) Image(painterResource(R.drawable.ic_launcher_background), null, layer)
             Image(
-                painterResource(R.drawable.ic_launcher_foreground),
+                painterResource(if (themed) R.drawable.ic_launcher_monochrome else R.drawable.ic_launcher_foreground),
                 null,
                 layer,
                 colorFilter = if (themed) ColorFilter.tint(Color(0xFF1F3A68)) else null,

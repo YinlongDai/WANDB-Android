@@ -5,18 +5,36 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Near-black tile, lit slightly from the top left. -->
+    <!-- Charcoal, lit from above. -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="0"
+                android:startX="54"
                 android:startY="0"
-                android:endX="108"
+                android:endX="54"
                 android:endY="108">
-                <item android:offset="0" android:color="#FF2B2E37" />
-                <item android:offset="1" android:color="#FF0F1013" />
+                <item android:offset="0" android:color="#FF2A2E37" />
+                <item android:offset="1" android:color="#FF111317" />
             </gradient>
         </aapt:attr>
     </path>
+    <!-- Warm glow behind the live point. -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="70"
+                android:centerY="40"
+                android:gradientRadius="44">
+                <item android:offset="0" android:color="#2EFFC21A" />
+                <item android:offset="1" android:color="#00FFC21A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Faint chart gridlines. -->
+    <path
+        android:strokeColor="#0FFFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M28,47H80M28,59H80M28,71H80" />
 </vector>

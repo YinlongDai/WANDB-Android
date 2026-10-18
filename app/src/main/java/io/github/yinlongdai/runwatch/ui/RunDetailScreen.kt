@@ -533,10 +533,15 @@ private fun OverviewTab(detail: RunDetail, glass: HazeState, barPadding: Padding
             item { SectionTitle("Summary") }
             items(detail.summary, key = { "s:" + it.first }) { (k, v) -> KeyValue(k, v) }
         }
-        if (detail.config.isNotEmpty()) {
-            item { SectionTitle("Config") }
-            items(detail.config, key = { "c:" + it.first }) { (k, v) -> KeyValue(k, v) }
+        item { SectionTitle("Config") }
+        if (detail.config.isEmpty()) item {
+            Text(
+                "No config was logged for this run. Pass config=… to wandb.init() to record hyperparameters.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        items(detail.config, key = { "c:" + it.first }) { (k, v) -> KeyValue(k, v) }
     }
 }
 

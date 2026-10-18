@@ -70,6 +70,32 @@ class ParsersTest {
     }
 
     @Test
+    fun configPairs_keepsConfigWithNanAndInfinity() {
+        // As Python's json.dumps writes them; a string value that mentions NaN stays as it is.
+        val cfg = """{"clip": {"value": Infinity}, "floor": {"value": -Infinity}, "init": {"value": NaN},
+            "note": {"value": "NaN \"Infinity\" here"}, "lr": {"value": 0.001}}"""
+        assertEquals(
+            listOf("clip" to "Infinity", "floor" to "-Infinity", "init" to "NaN", "lr" to "0.001", "note" to "NaN \"Infinity\" here"),
+            Parsers.configPairs(cfg),
+        )
+    }
+
+    @Test
+    fun quoteNonFinite_onlyTouchesBareWords() {
+        // Tests run on the reference org.json, which is laxer than Android's, so check the rewrite itself.
+        assertEquals(
+            """{"a": "Infinity", "b": "-Infinity", "c": ["NaN", 1], "s": "NaN \" x"}""",
+            Parsers.quoteNonFinite("""{"a": Infinity, "b": -Infinity, "c": [NaN, 1], "s": "NaN \" x"}"""),
+        )
+    }
+
+    @Test
+    fun configPairs_showsUnreadableConfigRaw() {
+        assertEquals(listOf("(raw)" to "{not json"), Parsers.configPairs("{not json"))
+        assertEquals(emptyList<Pair<String, String>>(), Parsers.configPairs("{}"))
+    }
+
+    @Test
     fun parseRun_readsFields() {
         val run = Parsers.parseRun(
             JSONObject(

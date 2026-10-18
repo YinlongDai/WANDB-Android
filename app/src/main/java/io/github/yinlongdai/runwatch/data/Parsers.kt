@@ -14,7 +14,37 @@ object Parsers {
         null, JSONObject.NULL -> null
         is JSONObject -> value
         is String -> if (value.isBlank()) null else runCatching { JSONObject(value) }.getOrNull()
+            ?: runCatching { JSONObject(quoteNonFinite(value)) }.getOrNull()
         else -> null
+    }
+
+    /**
+     * Python's json writes NaN and infinities as bare `NaN`, `Infinity` and
+     * `-Infinity`, which W&B passes through in config and summary strings.
+     * Android's JSON parser rejects the whole object over them, so quote them
+     * (outside of strings) and they come through as text.
+     */
+    fun quoteNonFinite(json: String): String {
+        val out = StringBuilder(json.length + 16)
+        var inString = false
+        var i = 0
+        while (i < json.length) {
+            val c = json[i]
+            if (inString) {
+                out.append(c)
+                if (c == '\\' && i + 1 < json.length) out.append(json[++i])
+                else if (c == '"') inString = false
+                i++
+                continue
+            }
+            val word = listOf("-Infinity", "Infinity", "NaN").firstOrNull { json.startsWith(it, i) }
+            when {
+                c == '"' -> { inString = true; out.append(c); i++ }
+                word != null -> { out.append('"').append(word).append('"'); i += word.length }
+                else -> { out.append(c); i++ }
+            }
+        }
+        return out.toString()
     }
 
     fun parseRun(node: JSONObject): Run {
@@ -185,7 +215,11 @@ object Parsers {
 
     /** config is {"lr": {"value": 0.001, "desc": null}, ...}; flattens nested dicts with dots. */
     fun configPairs(config: Any?): List<Pair<String, String>> {
-        val obj = jsonObjectOf(config) ?: return emptyList()
+        val obj = jsonObjectOf(config) ?: run {
+            // Still unreadable: show it as logged rather than pretend there is no config.
+            val raw = (config as? String)?.trim().orEmpty()
+            return if (raw.isEmpty() || raw == "{}") emptyList() else listOf("(raw)" to raw.take(4000))
+        }
         val out = mutableListOf<Pair<String, String>>()
         for (key in obj.keys()) {
             if (key.startsWith("_wandb")) continue

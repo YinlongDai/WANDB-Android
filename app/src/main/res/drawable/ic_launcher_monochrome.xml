@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed-icon version of the foreground: one color, so just the line, halo and dot. -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M31,72 C39,48 51,41.5 70,39.5" />
+    <path
+        android:fillColor="#FF000000"
+        android:fillAlpha="0.3"
+        android:pathData="M70,39.5m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M70,39.5m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+</vector>
