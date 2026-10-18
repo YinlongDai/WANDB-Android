@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Downloaded update APKs, shared with the system installer. -->
+<!-- Downloaded update APKs for the system installer, and exported chart images for the share sheet. -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <cache-path name="shared" path="shared/" />
 </paths>

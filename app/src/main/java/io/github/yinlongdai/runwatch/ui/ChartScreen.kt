@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -55,6 +56,9 @@ fun ChartScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var running by remember { mutableStateOf(false) }
     var window by remember(xKey) { mutableStateOf<ClosedFloatingPointRange<Double>?>(null) }
+    val capture = rememberChartCapture()
+    val share = rememberChartSharer()
+    val subtitle = if (runNames.size > 1) "$entity/$project · ${runNames.size} runs" else "$entity/$project/${runNames.first()}"
 
     PollingEffect(xKey, intervalMs = 15_000) {
         try {
@@ -85,7 +89,7 @@ fun ChartScreen(
                     Column {
                         Text(metric, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            if (runNames.size > 1) "$entity/$project · ${runNames.size} runs" else "$entity/$project/${runNames.first()}",
+                            subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -97,6 +101,12 @@ fun ChartScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
                 actions = {
+                    val s = series
+                    if (!s.isNullOrEmpty()) {
+                        IconButton(onClick = { share(capture, ChartData(metric, s, ChartSettings.xLabel(xKey)), subtitle, window != null) }) {
+                            Icon(Icons.Filled.Share, "Share as image")
+                        }
+                    }
                     if (window != null) {
                         IconButton(onClick = { window = null }) { Icon(Icons.Filled.ZoomOutMap, "Reset zoom") }
                     }
@@ -140,6 +150,7 @@ fun ChartScreen(
                             xWindow = window,
                             onXWindowChange = { window = it },
                             modifier = ChartPadding,
+                            capture = capture,
                         )
                     }
                 }

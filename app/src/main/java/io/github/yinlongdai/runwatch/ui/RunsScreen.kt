@@ -1,8 +1,7 @@
 package io.github.yinlongdai.runwatch.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
@@ -54,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,7 +121,7 @@ fun RunsScreen(
         runs?.any { it.isRunning } == true
     }
 
-    // Long-press runs to select them, then compare, hide or restore them.
+    // Long-press runs to select them (drag to select several), then compare, hide or restore them.
     var selected by remember { mutableStateOf<List<String>>(emptyList()) }
     fun toggleSelect(run: Run) {
         selected = if (run.name in selected) selected - run.name else selected + run.name
@@ -230,13 +232,15 @@ fun RunsScreen(
                         column,
                         sort,
                     )
+                    val listState = rememberLazyListState()
+                    val dragSelect = dragToSelect(listState, shown.map { it.name }, selected) { selected = it }
                     InsetPullToRefreshBox(
                         isRefreshing = refreshing,
                         onRefresh = { refreshing = true; reload++ },
                         topInset = listPadding.calculateTopPadding(),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding) {
+                        LazyColumn(Modifier.fillMaxSize().then(dragSelect), state = listState, contentPadding = listPadding) {
                             item {
                                 FlowRow(
                                     Modifier.padding(horizontal = 16.dp),
@@ -300,7 +304,7 @@ fun RunsScreen(
                             }
                             if (showHidden) item {
                                 Text(
-                                    "Hidden runs are only hidden on this phone; they stay on W&B. Long-press to select runs, then Restore.",
+                                    "Hidden runs are only hidden on this phone; they stay on W&B. Long-press (and drag) to select runs, then Restore.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -318,7 +322,7 @@ fun RunsScreen(
                             }
                             if (selected.isEmpty() && !showHidden && shown.size >= 2) item {
                                 Text(
-                                    "Tip: long-press runs to compare or hide them.",
+                                    "Tip: long-press a run, then drag to select several to compare or hide.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -330,7 +334,7 @@ fun RunsScreen(
                                     column = column,
                                     selected = run.name in selected,
                                     onClick = { if (selected.isNotEmpty()) toggleSelect(run) else onOpenRun(run) },
-                                    onLongClick = { toggleSelect(run) },
+                                    onToggle = { toggleSelect(run) },
                                 )
                                 HorizontalDivider()
                             }
@@ -396,14 +400,15 @@ fun sortRuns(runs: List<Run>, column: String?, sort: RunSort): List<Run> {
     return sorted + missing
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RunRow(run: Run, column: String?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun RunRow(run: Run, column: String?, selected: Boolean, onClick: () -> Unit, onToggle: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            // Touch long-presses are handled by the list (see dragToSelect); this keeps the action for accessibility.
+            .semantics { onLongClick(label = if (selected) "Deselect" else "Select") { onToggle(); true } }
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

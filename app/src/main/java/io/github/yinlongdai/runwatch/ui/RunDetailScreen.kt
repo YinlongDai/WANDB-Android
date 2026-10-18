@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Memory
@@ -257,6 +258,7 @@ private fun ChartsTab(
     onExpand: (String) -> Unit,
 ) {
     val runName = detail.run.name
+    val share = rememberChartSharer()
     var query by rememberSaveable { mutableStateOf("") }
     var limit by rememberSaveable { mutableIntStateOf(CHART_PAGE) }
     val xKey = ChartSettings.xKey(prefs)
@@ -356,6 +358,7 @@ private fun ChartsTab(
                         pinned = key in pinnedKeys,
                         onTogglePin = { togglePin(key) },
                         onExpand = { onExpand(key) },
+                        onShare = { capture, chart -> share(capture, chart.copy(title = key), "$entity/$project · ${detail.run.displayName}", false) },
                     )
                 }
             }
@@ -574,9 +577,13 @@ private fun MetricCard(
     pinned: Boolean,
     onTogglePin: () -> Unit,
     onExpand: () -> Unit,
+    onShare: (ChartCapture, ChartData) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val capture = rememberChartCapture()
+        val chart = series?.let { ChartData(title = title, series = listOf(it), xLabel = xLabel) }
         val actions: @Composable RowScope.() -> Unit = {
+            if (chart != null) SmallIconButton(Icons.Filled.Share, "Share $key as image") { onShare(capture, chart) }
             SmallIconButton(
                 if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                 if (pinned) "Unpin $key" else "Pin $key",
@@ -585,19 +592,20 @@ private fun MetricCard(
             )
             SmallIconButton(Icons.Filled.OpenInFull, "Expand $key", onClick = onExpand)
         }
-        if (series == null) {
+        if (chart == null) {
             Row(ChartPadding, verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 actions()
             }
         } else {
             LineChart(
-                chart = ChartData(title = title, series = listOf(series), xLabel = xLabel),
+                chart = chart,
                 smoothing = ChartSettings.smoothing,
                 logY = ChartSettings.logY,
                 clipOutliers = ChartSettings.clipOutliers,
                 modifier = ChartPadding,
                 actions = actions,
+                capture = capture,
             )
         }
     }

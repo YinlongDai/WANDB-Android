@@ -30,11 +30,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -152,6 +154,8 @@ fun LineChart(
     onXWindowChange: ((ClosedFloatingPointRange<Double>?) -> Unit)? = null,
     /** Small buttons on the right of the title row (pin, expand, ...). */
     actions: @Composable RowScope.() -> Unit = {},
+    /** When set, keeps a copy of the drawn plot for image export. */
+    capture: ChartCapture? = null,
 ) {
     val prepared = remember(chart, smoothing, logY, clipOutliers, xWindow) {
         prepare(chart, smoothing, logY, clipOutliers, xWindow)
@@ -319,22 +323,43 @@ fun LineChart(
                 }
         }
 
+        // Leave room above the plot so the top Y label isn't clipped.
+        val labelHalf = (yAxis?.firstOrNull()?.second?.size?.height ?: 0) / 2f
         Canvas(
             Modifier
                 .fillMaxWidth()
                 .height(height)
                 .padding(top = 6.dp)
-                .then(gestures),
+                .then(gestures)
+                // The touch cursor goes over the plot, outside the captured layer, so exports leave it out.
+                .drawWithContent {
+                    drawContent()
+                    val cx = cursorX ?: return@drawWithContent
+                    if (size.width <= leftPx || size.height <= bottomPad.toPx()) return@drawWithContent
+                    val f = PlotFrame(leftPx, labelHalf, size.height - bottomPad.toPx(), size.width, prepared)
+                    val x = f.px(cx).coerceIn(f.left, f.right)
+                    drawLine(labelColor, Offset(x, f.top), Offset(x, f.bottom), strokeWidth = 1f)
+                    prepared.series.forEachIndexed { i, s ->
+                        val j = nearestIndex(s.x, cx)
+                        val y = f.py((s.smooth ?: s.raw)[j])
+                        if (y in f.top..f.bottom) drawCircle(seriesColor(s, i), 5f, Offset(f.px(s.x[j]), y))
+                    }
+                }
+                .then(
+                    if (capture == null) Modifier
+                    else Modifier.drawWithContent {
+                        capture.layer.record { this@drawWithContent.drawContent() }
+                        drawLayer(capture.layer)
+                    },
+                ),
         ) {
             if (size.width <= leftPx || size.height <= bottomPad.toPx()) return@Canvas
             val left = leftPx
-            val labelHalf = (yAxis?.firstOrNull()?.second?.size?.height ?: 0) / 2f
-            // Leave room above the plot so the top Y label isn't clipped.
             val top = labelHalf
             val bottom = size.height - bottomPad.toPx()
-            val width = size.width - left
-            fun px(x: Double) = left + ((x - prepared.xMin) / (prepared.xMax - prepared.xMin) * width).toFloat()
-            fun py(y: Double) = bottom - ((y - prepared.yMin) / (prepared.yMax - prepared.yMin) * (bottom - top)).toFloat()
+            val frame = PlotFrame(left, top, bottom, size.width, prepared)
+            fun px(x: Double) = frame.px(x)
+            fun py(y: Double) = frame.py(y)
 
             // Y grid + right-aligned labels
             yAxis?.forEach { (t, layout) ->
@@ -371,16 +396,6 @@ fun LineChart(
                 }
             }
 
-            cursorX?.let { cx ->
-                val x = px(cx).coerceIn(left, size.width)
-                drawLine(labelColor, Offset(x, top), Offset(x, bottom), strokeWidth = 1f)
-                prepared.series.forEachIndexed { i, s ->
-                    val j = nearestIndex(s.x, cx)
-                    val v = (s.smooth ?: s.raw)[j]
-                    val y = py(v)
-                    if (y in top..bottom) drawCircle(seriesColor(s, i), 5f, Offset(px(s.x[j]), y))
-                }
-            }
         }
 
         if (prepared.series.size > 1) {
@@ -402,6 +417,12 @@ fun LineChart(
             }
         }
     }
+}
+
+/** Where the plot area sits in the chart canvas, and data-to-pixel mapping. */
+private class PlotFrame(val left: Float, val top: Float, val bottom: Float, val right: Float, val p: Prepared) {
+    fun px(x: Double) = left + ((x - p.xMin) / (p.xMax - p.xMin) * (right - left)).toFloat()
+    fun py(y: Double) = bottom - ((y - p.yMin) / (p.yMax - p.yMin) * (bottom - top)).toFloat()
 }
 
 private fun toDataX(px: Float, width: Float, left: Float, p: Prepared): Double {

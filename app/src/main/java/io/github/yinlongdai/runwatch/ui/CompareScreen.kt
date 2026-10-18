@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +72,7 @@ fun CompareScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var limit by rememberSaveable { mutableIntStateOf(COMPARE_PAGE) }
     val xKey = ChartSettings.xKey(prefs)
+    val share = rememberChartSharer()
 
     // Run metadata, refreshed while any compared run is live.
     PollingEffect(runNames, intervalMs = 30_000) {
@@ -200,23 +202,29 @@ fun CompareScreen(
                     items(visible, key = { it }) { key ->
                         Card(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                             val series = charts[key]
+                            val capture = rememberChartCapture()
+                            val chart = series?.let { ChartData(key, it, ChartSettings.xLabel(xKey)) }
                             val expand: @Composable RowScope.() -> Unit = {
+                                if (chart != null) SmallIconButton(Icons.Filled.Share, "Share $key as image") {
+                                    share(capture, chart, "$entity/$project · ${runs.size} runs", false)
+                                }
                                 SmallIconButton(Icons.Filled.OpenInFull, "Expand $key") { onExpandMetric(key) }
                             }
-                            if (series == null) {
+                            if (chart == null) {
                                 Row(ChartPadding, verticalAlignment = Alignment.CenterVertically) {
                                     Text(key, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                                     expand()
                                 }
                             } else {
                                 LineChart(
-                                    chart = ChartData(key, series, ChartSettings.xLabel(xKey)),
+                                    chart = chart,
                                     smoothing = ChartSettings.smoothing,
                                     logY = ChartSettings.logY,
                                     clipOutliers = ChartSettings.clipOutliers,
                                     showStats = false,
                                     modifier = ChartPadding,
                                     actions = expand,
+                                    capture = capture,
                                 )
                             }
                         }
