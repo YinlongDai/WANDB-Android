@@ -66,6 +66,7 @@ import io.github.yinlongdai.runwatch.data.Parsers
 import io.github.yinlongdai.runwatch.data.Prefs
 import io.github.yinlongdai.runwatch.data.Run
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -400,8 +401,16 @@ fun sortRuns(runs: List<Run>, column: String?, sort: RunSort): List<Run> {
     return sorted + missing
 }
 
+/** One run in the list. [now] is only fixed in screenshot tests. */
 @Composable
-private fun RunRow(run: Run, column: String?, selected: Boolean, onClick: () -> Unit, onToggle: () -> Unit) {
+internal fun RunRow(
+    run: Run,
+    column: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onToggle: () -> Unit,
+    now: Instant = Instant.now(),
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -424,8 +433,8 @@ private fun RunRow(run: Run, column: String?, selected: Boolean, onClick: () -> 
         }
         val meta = listOfNotNull(
             run.user,
-            relativeTime(run.createdAt).takeIf { it.isNotEmpty() },
-            runDuration(run).takeIf { it.isNotEmpty() }?.let { if (run.isRunning) "running $it" else "ran $it" },
+            relativeTime(run.createdAt, now).takeIf { it.isNotEmpty() },
+            runDuration(run, now).takeIf { it.isNotEmpty() }?.let { if (run.isRunning) "running $it" else "ran $it" },
             run.group,
             run.jobType,
         ).joinToString(" · ")

@@ -503,11 +503,12 @@ private fun ansiText(line: LogLine): AnnotatedString {
     }
 }
 
+/** Run facts, summary and config. [now] is only fixed in screenshot tests. */
 @Composable
-private fun OverviewTab(detail: RunDetail, glass: HazeState, barPadding: PaddingValues) {
+internal fun OverviewTab(detail: RunDetail, glass: HazeState, barPadding: PaddingValues, now: Instant = Instant.now()) {
     val run = detail.run
     val created = parseWandbTime(run.createdAt)
-    val end = if (run.isRunning) Instant.now() else parseWandbTime(run.heartbeatAt)
+    val end = if (run.isRunning) now else parseWandbTime(run.heartbeatAt)
     val runtime = if (created != null && end != null) formatDuration(Duration.between(created, end).seconds) else ""
 
     LazyColumn(
@@ -523,7 +524,7 @@ private fun OverviewTab(detail: RunDetail, glass: HazeState, barPadding: Padding
         item { KeyValue("ID", run.name) }
         item { KeyValue("State", run.state) }
         run.user?.let { item { KeyValue("User", it) } }
-        item { KeyValue("Created", "${run.createdAt.replace('T', ' ')} UTC (${relativeTime(run.createdAt)})") }
+        item { KeyValue("Created", "${run.createdAt.replace('T', ' ')} UTC (${relativeTime(run.createdAt, now)})") }
         if (runtime.isNotEmpty()) item { KeyValue("Runtime", runtime) }
         run.group?.let { item { KeyValue("Group", it) } }
         run.jobType?.let { item { KeyValue("Job type", it) } }
